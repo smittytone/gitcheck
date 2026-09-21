@@ -82,7 +82,7 @@ struct Gitcheck {
                 case "-d", "--delete":
                     requiresValue = 2
                     previousArgument = argument
-                case "--clean":
+                case "-c", "--clean":
                     _ = await cleanBookmarks()
                     closeCleanly()
                 case "-g", "--gitpath":

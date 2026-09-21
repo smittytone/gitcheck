@@ -114,6 +114,13 @@ Stored bookmarks:
 📁 1. /Users/smitty/Git
 📁 2. /Users/smitty/WorkRepos
 ```
+### Git
+
+By default, `gitcheck` looks for a `git` binary to call. If you have multiple `git` installations—as I do: one from Xcode Command Line Tools, the other, more up to date, installed via Homebrew—then `gitcheck` may not necessarily use the one you expect. To specify a specific `git` binary, pass in its absolute path using the `--gitpath` (`-g`) option:
+
+```shell
+gitcheck $HOME/Git --gitpath /opt/homebrew/bin/git
+```
 
 ## Compilation and Installation
 
@@ -129,3 +136,5 @@ This release is 4.0.0. This is because versions 0.1.0 through 3.0.0 were shell s
 ## Ownership
 
 `gitcheck` code is © 2026, Tony Smith (@smittytone). It is licensed under the terms of the [MIT Licence](LICENCE.md).
+
+_AI was not used in the development of this software. This is a statement of plain fact, not of policy. AI tools may be used in future._

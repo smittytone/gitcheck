@@ -44,19 +44,22 @@ extension Gitcheck {
             are examined when you call \(gitcheck) and pass in no parent-directory paths.
 
             \(String(.bold))USAGE\(String(.normal))
-              gitcheck [-f] [-b] [-a] [-v] [-h] [/path/to/git/directory]
+              gitcheck [-f] [-b] [-a] [-l] [-c] [-g /path/to/git] [-v] [-h] [/path/to/git/directory]
 
             \(String(.bold))OPTIONS\(String(.normal))
-              -f | --full          Provide status for all of the repos within parent directories.
-                                   By default, \(gitcheck) only lists repos containing uncommitted
-                                   or unmerged changes
-              -b | --branch        List all repos’ current working branches.
+              -f | --full               Provide status for all of the repos within parent directories.
+                                        By default, \(gitcheck) only lists repos containing uncommitted
+                                        or unmerged changes
+              -b | --branch             List all repos’ current working branches.
             
-              -a | --add           Add path arguments to the bookmarks file
-              -l | --list          List bookmarks
+              -a | --add                Add path arguments to the bookmarks file
+              -l | --list               List bookmarks
+              -c | --clean              Clean out dead bookmarks
+            
+              -g | --gitpath {path}     Specify a specific 'git' binary (absolute path)
               
-              -v | --version       \(gitcheck) version information
-              -h | --help          This help screen
+              -v | --version            \(gitcheck) version information
+              -h | --help               This help screen
 
             """
 
