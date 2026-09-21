@@ -1,6 +1,6 @@
 /*
     gitcheck
-    gitcheck_main.swift
+    main.swift
 
     Copyright © 2026 Tony Smith. All rights reserved.
 
@@ -23,7 +23,6 @@
     OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
     SOFTWARE.
 */
-
 
 import Foundation
 import Clicore
@@ -83,6 +82,9 @@ struct Gitcheck {
                 case "-d", "--delete":
                     requiresValue = 2
                     previousArgument = argument
+                case "--clean":
+                    _ = await cleanBookmarks()
+                    closeCleanly()
                 case "-g", "--gitpath":
                     requiresValue = 1
                     previousArgument = argument
@@ -104,8 +106,13 @@ struct Gitcheck {
                         Stdio.reportError("Directory \(argument) cannot be located")
                     }
             }
+
+            if requiresValue > 0 && argument == collatedArguments.last {
+                Stdio.reportErrorAndExit("Missing value for argument \(argument)")
+            }
         }
 
+        // Get any stored bookmarks
         var bookmarks: [String] = await loadBookmarks()
         if settings.showBookmarks {
             showBookmarks(bookmarks)
@@ -117,11 +124,11 @@ struct Gitcheck {
         }
 
         // Check we have directories
-        if settings.targetDirectories.isEmpty && bookmarks.isEmpty {
-            Stdio.reportErrorAndExit("No valid target directories specified")
-        }
+        if settings.targetDirectories.isEmpty  {
+            if bookmarks.isEmpty {
+                Stdio.reportErrorAndExit("No valid target directories specified")
+            }
 
-        if settings.targetDirectories.isEmpty {
             settings.targetDirectories = convertBookmarks(bookmarks)
         }
 
@@ -139,51 +146,6 @@ struct Gitcheck {
 
         // Close cleanly
         closeCleanly()
-    }
-
-
-    // MARK: Help and Info Functions
-
-    /**
-     Display help.
-     */
-    private static func showHelp() {
-
-        let gitcheck = "\(String(.bold))gitcheck\(String(.normal))"
-        let helpText = """
-            Call \(gitcheck) to view or use a connected adaptor board's device path. If multiple adaptors are
-            connected, \(gitcheck) will list them. In this case, to use one of them, call \(gitcheck) with the
-            required adaptor board's index as shown in the presented list.
-
-            \(String(.bold))USAGE\(String(.normal))
-              gitcheck [--version] [--help] /path/to/git/directory
-
-            \(String(.bold))OPTIONS\(String(.normal))
-              -v | --version       \(gitcheck) version information
-              -h | --help          This help screen
-
-            """
-
-        showHeader()
-        Stdio.report(helpText)
-    }
-
-
-    /**
-     Display the app's version number.
-     */
-    private static func showHeader() {
-
-#if os(macOS)
-        let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? SWIFT_BUILD_PROCESS_GITCHECK_VERSION
-        let build = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "\(SWIFT_BUILD_PROCESS_GITCHECK_BUILD)"
-        let name = Bundle.main.object(forInfoDictionaryKey: "CFBundleName") as? String ?? "gitcheck"
-        Stdio.report("\(String(.bold))\(name) \(version) (\(build))\(String(.normal)) for macOS")
-#else
-        // Linux results
-        Stdio.report("\(String(.bold))dlist \(SWIFT_BUILD_PROCESS_GITCHECK_VERSION) (\(SWIFT_BUILD_PROCESS_GITCHECK_BUILD))\(String(.normal)) for Linux")
-#endif
-        Stdio.report("Copyright © 2026, Tony Smith (@smittytone). Source code available under the MIT licence.")
     }
 
 

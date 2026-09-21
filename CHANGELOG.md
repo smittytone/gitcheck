@@ -1,4 +1,4 @@
 ## Release Notes ##
 
-- 0.1.0
-    - Initial version.
+- 4.0.0
+    - Initial Swift version.

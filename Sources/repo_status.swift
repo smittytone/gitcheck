@@ -1,52 +1,34 @@
+/*
+    gitcheck
+    repo_status.swift
+
+    Copyright © 2026 Tony Smith. All rights reserved.
+
+    MIT License
+    Permission is hereby granted, free of charge, to any person obtaining a copy
+    of this software and associated documentation files (the "Software"), to deal
+    in the Software without restriction, including without limitation the rights
+    to use, copy, modify, merge, publish, distribute, sub-license, and/or sell
+    copies of the Software, and to permit persons to whom the Software is
+    furnished to do so, subject to the following conditions:
+
+    The above copyright notice and this permission notice shall be included in all
+    copies or substantial portions of the Software.
+
+    THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+    IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+    FITNESS FOR A PARTICULAR PURPOSE AND NON-INFRINGEMENT. IN NO EVENT SHALL THE
+    AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+    LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+    OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+    SOFTWARE.
+*/
 
 import Foundation
 import Clicore
 
 
 extension Gitcheck {
-
-    /**
-     Check that the supplied path references a directory.
-
-     -Parameters:
-        - path: Shell-generated path.
-
-     -Returns: `true` if the path points to a directory, otherwise `false`.
-     */
-    internal static func checkDirectory(_ path: String) -> Bool {
-
-        var isDir: ObjCBool = false
-        return FileManager.default.fileExists(atPath: path, isDirectory: &isDir) && isDir.boolValue
-    }
-
-
-    /**
-     Check that the supplied URL references a repo directory:
-     ie. it contains a .git sub-directory.
-
-     -Parameters:
-        - directory: A URL referencing a directory.
-
-     -Returns: `true` if the path points to a repo directory, otherwise `false`.
-     */
-    internal static func checkRepo(_ directory: URL) -> Bool {
-
-        do {
-            let subDirectories = try FileManager.default.contentsOfDirectory(at: directory,
-                                                                             includingPropertiesForKeys: [],
-                                                                             options: [])
-            for subDirectory in subDirectories {
-                if subDirectory.isDirectory && subDirectory.lastPathComponent == ".git" {
-                    return true
-                }
-            }
-        } catch {
-            // Fall through
-        }
-
-        return false
-    }
-
 
     /**
      Scan the supplied list of directories, each of which should have already been
@@ -61,7 +43,6 @@ extension Gitcheck {
     internal static func getRepoStates(_ settings: Settings) async -> StatusResults {
 
         var results = StatusResults()
-        var files: [URL]
         let gitArgs: [[String]] = [
             ["status", "--ignore-submodules"],
             ["status", "--porcelain", "--ignore-submodules"]
@@ -85,15 +66,8 @@ extension Gitcheck {
                 results.repos.append(repo)
             }
 
-            do {
-                // Get a parent directory's files and order the alphabetically
-                files = try FileManager.default.contentsOfDirectory(at: directory,
-                                                                    includingPropertiesForKeys: [],
-                                                                    options: .skipsHiddenFiles)
-                files = files.sorted(by: { a, b in
-                    return a.lastPathComponent.lowercased() < b.lastPathComponent.lowercased()
-                })
-
+            // Get a parent directory's files and order the alphabetically
+            if let files = await getFiles(directory) {
                 // Iterate over the parent's files
                 for file in files {
                     // Add an activity marker
@@ -110,7 +84,6 @@ extension Gitcheck {
 
                         var argIndex = 0
                         if settings.showBranches {
-                            // local branch=$(git branch --show-current)
                             let (errorCode, stdio, stderr) = await Processes.runProcessAsync(app: gitPath, with: ["branch", "--show-current"], in: file)
                             if errorCode != 0 {
                                 Stdio.reportError(stderr)
@@ -149,8 +122,6 @@ extension Gitcheck {
                         }
                     }
                 }
-            } catch {
-                // Fall through to fail condition
             }
 
             results.widths.append(max)
@@ -159,7 +130,16 @@ extension Gitcheck {
         return results
     }
 
+    
+    /**
+     Examine the response from various `git status` commands to determine
+     the repo state.
 
+     - Parameters:
+        - text: The text returned by the call to `git`.
+
+     - Returns: A RepoState enumeration value.
+     */
     internal static func determineRepoState(_ text: String) -> RepoState {
 
         if text.contains("is ahead of") {
@@ -232,121 +212,4 @@ extension Gitcheck {
         }
     }
 
-
-    internal static func loadBookmarks() async -> [String] {
-
-        var bookmarks: [String] = []
-
-        let home = FileManager.default.homeDirectoryForCurrentUser
-        let store = home.appending(path: ".config/gitcheck/bookmarks.json")
-        if FileManager.default.fileExists(atPath: store.path) {
-            do {
-                let bookmarkData = try Data(contentsOf: store)
-                let bookmarkStore = try JSONSerialization.jsonObject(with: bookmarkData, options: []) as! [String: [String]]
-                guard let bms = bookmarkStore["bookmarks"] else { return bookmarks }
-                bookmarks = bms
-            } catch {
-                // Load failed
-                Stdio.reportError("Could not load or process the bookmark store")
-            }
-        }
-
-        return bookmarks
-    }
-
-
-    internal static func showBookmarks(_ bookmarks: [String]) {
-
-        if bookmarks.isEmpty {
-            Stdio.report("No bookmarks stored")
-        } else {
-            Stdio.report("Stored bookmarks:")
-            for (index, bookmark) in bookmarks.enumerated() {
-#if os(macOS)
-                Stdio.report(withEmoji: "📁", String(format: "%0d. %@", index + 1, bookmark))
-#else
-                Stdio.report(String(format: "%0d. %@", index + 1, bookmark))
-#endif
-            }
-        }
-    }
-
-
-    internal static func saveBookmarks(_ baseBookmarks: [String], _ newBookmarks: [URL]) async -> [String] {
-
-        var bookmarks: [String] = []
-        for bookmark in baseBookmarks {
-            bookmarks.append(bookmark)
-        }
-
-        for newBookmark in newBookmarks {
-            var got = false
-            for bookmark in bookmarks {
-                if newBookmark.path == bookmark || String(newBookmark.path.dropLast(1)) == bookmark {
-                    Stdio.reportWarning("Directory \(newBookmark.path) already bookmarked")
-                    got = true
-                    break
-                }
-            }
-
-            if !got {
-                if !checkRepo(newBookmark) {
-                    Stdio.reportWarning("Directory \(newBookmark.path) contains no git repos")
-                }
-
-                bookmarks.append(newBookmark.path)
-            }
-        }
-
-        if bookmarks.count > baseBookmarks.count {
-            let home = FileManager.default.homeDirectoryForCurrentUser
-            let store = home.appending(path: ".config/gitcheck/bookmarks.json")
-            let dict: [String:[String]] = ["bookmarks": bookmarks]
-            if !FileManager.default.fileExists(atPath: store.path) {
-                do {
-                    let storeDir = home.appending(path: ".config/gitcheck")
-                    try FileManager.default.createDirectory(at: storeDir, withIntermediateDirectories: true)
-                } catch {
-                    Stdio.reportError("Could not create the bookmark store at ~/.config/gitcheck")
-                }
-            } else {
-                do {
-                    _ = try FileManager.default.replaceItemAt(home.appending(path: ".config/gitcheck/bookmarks.bak"), withItemAt: store)
-                } catch {
-                    Stdio.reportError("Could not back-up the bookmark store at ~/.config/gitcheck")
-                }
-            }
-
-            do {
-                let bookmarkData = try JSONSerialization.data(withJSONObject: dict)
-                try bookmarkData.write(to: store)
-            } catch {
-                // Load failed
-                Stdio.reportError("Could not write the bookmark store")
-            }
-        } else {
-            Stdio.reportWarning("No new bookmarks able to be added")
-        }
-
-        return bookmarks
-    }
-
-
-    internal static func convertBookmarks(_ bookmarks: [String]) -> [URL] {
-
-        var urls: [URL] = []
-        for bookmark in bookmarks {
-            let url = URL(filePath: bookmark)
-            urls.append(url)
-        }
-
-        return urls
-    }
-
-
-    internal static func getGit() async -> String? {
-
-        let (errorCode, stdio, stderr) = await Processes.runProcessAsync(app: "/usr/bin/which", with: ["git"])
-        return errorCode == 0 ? String(stdio.dropLast(1)) : stderr
-    }
 }
