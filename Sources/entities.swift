@@ -29,46 +29,60 @@ import Clicore
 
 
 /*
- Basic structure to hold dlist-specific passable values.
+ gitcheck-specific operational and preference values.
  */
 struct Settings {
 
-    public var targetDirectories: [URL]     = []
-    public var deletedBookmarks: [String]   = []
-    public var showBranches: Bool           = false
-    public var showAllRepos: Bool           = false
-    public var showBookmarks: Bool          = false
-    public var addBookmarks: Bool           = false
-    public var gitBinaryPath: String?       = nil
+    public var targetDirectories: [URL]     = []                // A list of parent directories passed in at the CLI
+    public var deletedBookmarks: [String]   = []                // A list of bookmarks to be removed UNIMPLEMENTED
+    public var showBranches: Bool           = false             // The `--branch` flag was included
+    public var showAllRepos: Bool           = false             // The `--full` flag was included
+    public var showBookmarks: Bool          = false             // The `--list` flag was included
+    public var addBookmarks: Bool           = false             // The `--add` flag was included
+    public var gitBinaryPath: String?       = nil               // Optional path to a `git` installation
 }
 
 
+/*
+ The outcome of a repo check.
+ */
 struct StatusResults {
 
-    internal var widths: [Int]              = []
-    internal var repos: [RepoRecord]        = []
-    internal var noReposFound: Bool           = true
+    internal var widths: [Int]              = []                // Array of repo name character widths (monospaced for CLI)
+    internal var repos: [RepoRecord]        = []                // Array of checked repos (see below)
+    internal var noReposFound: Bool         = true              // Set if no repos were found at all
 }
 
 
+/*
+ A repo state record.
+ */
 struct RepoRecord {
 
-    var name: String                        = ""
-    var path: String                        = ""
-    var currentBranch: String               = ""
-    var state: RepoState                    = .unknown
+    var name: String                        = ""                // The repo name, i.e., the directory name
+    var path: String                        = ""                // The directory's path
+    var currentBranch: String               = ""                // The repo's working branch
+    var state: RepoState                    = .unknown          // The repo's state (see below)
 }
 
 
+/*
+ Possible repo states.
+ */
 enum RepoState: String {
 
     case clean                              = "no"
     case unmerged                           = "unmerged"
     case uncommitted                        = "uncommitted"
-    case unknown                            = "NaN"
+    case unknown                            = "NaN"             // Got to put something!
     case separator                          = "="
 
 
+    /**
+     Return a suitable colour for shell text.
+
+     Requires `Clicore`.
+     */
     func colour() -> Stdio.ShellColour {
 
         switch self {

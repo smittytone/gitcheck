@@ -30,6 +30,11 @@ import Clicore
 
 extension Gitcheck {
 
+    /**
+     Load the bookmarks from the standard file, if it exists and any are present.
+
+     - Returns: An array of bookmarks (absolute paths to repo parent directories).
+     */
     internal static func loadBookmarks() async -> [String] {
 
         var bookmarks: [String] = []
@@ -51,6 +56,13 @@ extension Gitcheck {
     }
 
 
+    /**
+     List pre-loaded bookmarks. This is a display-only function.
+
+     - Parameters:
+        - bookmarks: An array of bookmarked paths, as produced by `loadBookmarks()`.
+     */
+
     internal static func showBookmarks(_ bookmarks: [String]) {
 
         if bookmarks.isEmpty {
@@ -71,6 +83,16 @@ extension Gitcheck {
     }
 
 
+    /**
+     Write an array of bookmarks to the standard bookmark file, optionally including an
+     array of additional bookmarks (provided as file URLs).
+
+     - Parameters:
+        - baseBookmarks: An array of bookmarked paths, as produced by `loadBookmarks()`.
+        - newBookmarks:  An array of directory URLs to be added to the bookmark store.
+
+     - Returns: An full array of bookmarks (absolute paths to repo parent directories).
+     */
     internal static func saveBookmarks(_ baseBookmarks: [String], _ newBookmarks: [URL]) async -> [String] {
 
         var bookmarks: [String] = []

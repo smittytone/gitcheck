@@ -35,7 +35,7 @@ extension Gitcheck {
      validated (that they *are* directories, and they hold git repo files), and determine
      their git state.
 
-     -Parameters:
+     - Parameters:
         - settings: A gitcheck settings structure, including the targets
 
      -Returns: An StatusResults structure containing the results of the scan.
@@ -157,7 +157,7 @@ extension Gitcheck {
     /**
      Output the git repo status report.
 
-     -Parameters:
+     - Parameters:
         - results:  A structure containing the analysis results.
         - setting: An app settings structure.
     */

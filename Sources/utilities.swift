@@ -102,6 +102,8 @@ extension Gitcheck {
             return nil
         }
 
+        // TODO Drop regular files, so `files` contains only directories
+
         return files.sorted(by: { a, b in
             return a.lastPathComponent.lowercased() < b.lastPathComponent.lowercased()
         })
