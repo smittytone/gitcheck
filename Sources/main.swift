@@ -59,8 +59,6 @@ struct Gitcheck {
                     switch requiresValue {
                         case 1:
                             settings.gitBinaryPath = argument
-                        case 2:
-                            settings.deletedBookmarks.append(argument)
                         default:
                             Stdio.reportError("Unexpected value passed as an argument")
                     }
@@ -68,6 +66,15 @@ struct Gitcheck {
                 
                 requiresValue = -1
                 continue
+            }
+
+            if settings.deleteFlag {
+                if argument.prefix(1) == "-" {
+                    settings.deleteFlag = false
+                } else {
+                    settings.deletedBookmarks.append(argument)
+                    continue
+                }
             }
 
             switch argument {
@@ -80,11 +87,12 @@ struct Gitcheck {
                 case "-a", "--add":
                     settings.addBookmarks = true
                 case "-d", "--delete":
-                    requiresValue = 2
+                    settings.deleteFlag = true
                     previousArgument = argument
                 case "-c", "--clean":
-                    _ = await cleanBookmarks()
-                    closeCleanly()
+                    settings.cleanBookmarks = true
+                    //_ = await cleanBookmarks()
+                    //closeCleanly()
                 case "-g", "--gitpath":
                     requiresValue = 1
                     previousArgument = argument
@@ -116,6 +124,17 @@ struct Gitcheck {
         var bookmarks: [String] = await loadBookmarks()
         if settings.showBookmarks {
             showBookmarks(bookmarks)
+            closeCleanly()
+        }
+
+        if settings.cleanBookmarks {
+            _ = await cleanBookmarks(bookmarks)
+            closeCleanly()
+        }
+        
+        if !settings.deletedBookmarks.isEmpty {
+            // We have bookmarks to delete
+            await deleteBookmarks(bookmarks, settings)
             closeCleanly()
         }
 

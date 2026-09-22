@@ -35,10 +35,12 @@ struct Settings {
 
     public var targetDirectories: [URL]     = []                // A list of parent directories passed in at the CLI
     public var deletedBookmarks: [String]   = []                // A list of bookmarks to be removed UNIMPLEMENTED
+    public var deleteFlag: Bool             = false
     public var showBranches: Bool           = false             // The `--branch` flag was included
     public var showAllRepos: Bool           = false             // The `--full` flag was included
     public var showBookmarks: Bool          = false             // The `--list` flag was included
     public var addBookmarks: Bool           = false             // The `--add` flag was included
+    public var cleanBookmarks: Bool         = false             // The `--clean` flag was included
     public var gitBinaryPath: String?       = nil               // Optional path to a `git` installation
 }
 

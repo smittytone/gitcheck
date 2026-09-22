@@ -36,3 +36,37 @@ extension URL {
         return FileManager.default.fileExists(atPath: self.path, isDirectory: &isDir) && isDir.boolValue
     }
 }
+
+
+extension Array {
+
+    /**
+     Replace one item in an array with another.
+
+     - Parameters:
+        - at:   The index of the item to replace.
+        - with: The replacement item.
+     */
+    public mutating func replace(at index: Int, with: Element) {
+
+        if index < 0 || index >= self.count { return }
+        _ = self.remove(at: index)
+        self.insert(with, at: index)
+    }
+
+
+    /**
+     Replace a series of items in an array with a single item.
+
+     - Parameters:
+        - at:   An array of the indices of the items to replace.
+        - with: The replacement item.
+     */
+    public mutating func replaceAll(at indices: [Int], with: Element) {
+
+        if indices.isEmpty { return }
+        for index in indices {
+            self.replace(at: index, with: with)
+        }
+    }
+}

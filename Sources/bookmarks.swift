@@ -72,13 +72,15 @@ extension Gitcheck {
             for (index, bookmark) in bookmarks.enumerated() {
 #if os(macOS)
                 Stdio.report(withEmoji: "📁", String(format: "%0d. %@", index + 1, bookmark))
-                Stdio.report(withEmoji: "📝", "Use the '--clean' flag to remove dead bookmarks")
 #else
                 Stdio.report(String(format: "%0d. %@", index + 1, bookmark))
-                Stdio.report("Use the '--clean' flag to remove dead bookmarks")
 #endif
             }
-
+#if os(macOS)
+            Stdio.report(withEmoji: "📝", "Use the '--clean' flag to remove dead bookmarks")
+#else
+            Stdio.report("Use the '--clean' flag to remove dead bookmarks")
+#endif
         }
     }
 
@@ -95,10 +97,7 @@ extension Gitcheck {
      */
     internal static func saveBookmarks(_ baseBookmarks: [String], _ newBookmarks: [URL]) async -> [String] {
 
-        var bookmarks: [String] = []
-        for bookmark in baseBookmarks {
-            bookmarks.append(bookmark)
-        }
+        var bookmarks = baseBookmarks
 
         if !newBookmarks.isEmpty {
             for newBookmark in newBookmarks {
@@ -122,6 +121,7 @@ extension Gitcheck {
         }
 
         if bookmarks.count >= baseBookmarks.count {
+            print("***")
             let home = FileManager.default.homeDirectoryForCurrentUser
             let storeFile = home.appending(path: CONSTANTS.BOOKMARK_FILE_PATH)
             let dict: [String:[String]] = ["bookmarks": bookmarks]
@@ -162,15 +162,12 @@ extension Gitcheck {
      TODO Get the user to confirm deletion.
 
      - Returns `true` if no changes needed to be made, or the deletion was successful,
-               otherwsise `false`.
+               otherwise `false` (error, user rejected choice)
      */
-    internal static func cleanBookmarks() async -> Bool {
+    internal static func cleanBookmarks(_ bookmarks: [String]) async -> Bool {
 
         // Load in the current bookmarks
-        var bookmarks: [String] = await loadBookmarks()
-        if bookmarks.isEmpty {
-            return true
-        }
+        guard !bookmarks.isEmpty else { return true }
 
         // Check each bookmark
         var deadBookmarkIndices: [Int] = []
@@ -234,31 +231,84 @@ extension Gitcheck {
         }
 
         // Remove the dead bookmarks...
-        for index in deadBookmarkIndices {
-            var didx = index
-            if index < 0 {
-                didx *= -1
-            }
-
-            didx -= 1
-
-            _ = bookmarks.remove(at: didx)
-            bookmarks.insert("@", at: didx)
-        }
-
-        var newBookmarks: [String] = []
-        for bookmark in bookmarks {
-            if bookmark != "@" {
-                newBookmarks.append(bookmark)
+        deadBookmarkIndices = deadBookmarkIndices.map {
+            if $0 < 0 {
+                return ($0 * -1) - 1
+            } else {
+                return $0 - 1
             }
         }
+
+        let deleteMarker = "@"
+        var pruned = bookmarks
+        pruned.replaceAll(at: deadBookmarkIndices, with: deleteMarker)
+        let newBookmarks = makeNewList(pruned, deleteMarker)
 
         // ...and write out the new bookmark file
-        if await saveBookmarks(newBookmarks, []).isEmpty {
+        guard let userChoice = Stdin.getCharacter("Do you wish to clean the bookmarks folder?")  else { return false }
+        if userChoice != "Y" { return false }
+        let saved = await saveBookmarks(newBookmarks, [])
+        if saved.count != newBookmarks.count {
+            Stdio.reportError("Could not clean bookmarks")
             return false
         }
 
+        Stdio.report("Bookmarks cleaned")
         return true
+    }
+
+
+    internal static func deleteBookmarks(_ bookmarks: [String], _ settings: Settings) async {
+
+        // Iterate over list of to-be-deleted items (which might be list indices or paths)
+        // to assemble an array of the indexes in the `bookmarks` array that are to be deleted.
+        var deletables: [Int] = []
+        for deletable in settings.deletedBookmarks {
+            if let first = deletable.first {
+                if var numericFirst = Int(String(first)) {
+                    // Index number given -- check it's in range
+                    numericFirst -= 1
+                    if numericFirst < 1 || numericFirst >= bookmarks.count {
+                        continue
+                    }
+
+                    deletables.append(numericFirst)
+                } else if String(first) == "/" {
+                    // Path given -- check it's in the bookmarks list
+                    for (index, bookmark) in bookmarks.enumerated() {
+                        if bookmark == deletable {
+                            deletables.append(index)
+                            break
+                        }
+                    }
+                }
+            }
+        }
+
+        // Remove the bookmarks...
+        let deleteMarker = "@"
+        var pruned = bookmarks
+        pruned.replaceAll(at: deletables, with: deleteMarker)
+        let newBookmarks = makeNewList(pruned, deleteMarker)
+        if newBookmarks.count < bookmarks.count {
+            // There are bookmarks to delete, so message the user
+            let deleted = bookmarks.count - newBookmarks.count
+            guard let userChoice = Stdin.getCharacter("Do you wish to delete \(deleted) bookmark\(deleted == 1 ? "" : "s")?")  else { return }
+            if userChoice == "Y" {
+                let saved = await saveBookmarks(newBookmarks, [])
+                if saved.count == newBookmarks.count {
+                    Stdio.report("\(deleted) bookmark\(deleted == 1 ? "" : "s") deleted")
+                } else {
+                    Stdio.reportError("Could not delete \(deleted) bookmark\(deleted == 1 ? "" : "s")")
+                }
+            }
+        }
+    }
+
+
+    internal static func makeNewList(_ old: [String], _ deleteable: String) -> [String] {
+
+        return old.filter { $0 != deleteable }
     }
 
 
@@ -273,12 +323,8 @@ extension Gitcheck {
      */
     internal static func convertBookmarks(_ bookmarks: [String]) -> [URL] {
 
-        var urls: [URL] = []
-        for bookmark in bookmarks {
-            let url = URL(filePath: bookmark)
-            urls.append(url)
+        return bookmarks.map {
+            return URL(filePath: $0)
         }
-
-        return urls
     }
 }
