@@ -54,6 +54,7 @@ extension Gitcheck {
             
               -a | --add                Add path arguments to the bookmarks file
               -l | --list               List bookmarks
+              -d | --delete {bookmarks} Delete bookmarks by index or path
               -c | --clean              Clean out dead bookmarks
             
               -g | --gitpath {path}     Specify a specific 'git' binary (absolute path)
