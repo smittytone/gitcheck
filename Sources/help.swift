@@ -81,7 +81,7 @@ extension Gitcheck {
         Stdio.report("\(String(.bold))\(name) \(version) (\(build))\(String(.normal)) for macOS")
     #else
         // Linux results
-        Stdio.report("\(String(.bold))dlist \(SWIFT_BUILD_PROCESS_VERSION) (\(SWIFT_BUILD_PROCESS_BUILD))\(String(.normal)) for Linux")
+        Stdio.report("\(String(.bold))gitcheck \(SWIFT_BUILD_PROCESS_VERSION) (\(SWIFT_BUILD_PROCESS_BUILD))\(String(.normal)) for Linux")
     #endif
         Stdio.report("Copyright © 2026, Tony Smith (@smittytone). Source code available under the MIT licence.")
     }
