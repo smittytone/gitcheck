@@ -75,12 +75,13 @@ extension Gitcheck {
     internal static func showHeader() {
 
     #if os(macOS)
-        let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? SWIFT_BUILD_PROCESS_GITCHECK_VERSION
+        let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? SWIFT_BUILD_PROCESS_VERSION
+        let build = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "\(SWIFT_BUILD_PROCESS_BUILD)"
         let name = Bundle.main.object(forInfoDictionaryKey: "CFBundleName") as? String ?? "gitcheck"
-        Stdio.report("\(String(.bold))\(name) \(version)\(String(.normal)) for macOS")
+        Stdio.report("\(String(.bold))\(name) \(version) (\(build))\(String(.normal)) for macOS")
     #else
         // Linux results
-        Stdio.report("\(String(.bold))dlist \(SWIFT_BUILD_PROCESS_GITCHECK_VERSION) for Linux")
+        Stdio.report("\(String(.bold))dlist \(SWIFT_BUILD_PROCESS_VERSION) (\(SWIFT_BUILD_PROCESS_BUILD))\(String(.normal)) for Linux")
     #endif
         Stdio.report("Copyright © 2026, Tony Smith (@smittytone). Source code available under the MIT licence.")
     }

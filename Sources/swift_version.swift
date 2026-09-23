@@ -29,5 +29,5 @@
          source of truth for the app's version and build numbers.
 */
 
-let SWIFT_BUILD_PROCESS_GITCHECK_VERSION = "4.0.0"
-let SWIFT_BUILD_PROCESS_GITCHECK_BUILD = 11
+let SWIFT_BUILD_PROCESS_VERSION = "4.0.0"
+let SWIFT_BUILD_PROCESS_BUILD = 13
