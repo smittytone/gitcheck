@@ -84,17 +84,35 @@ extension Gitcheck {
 
                         var argIndex = 0
                         if settings.showBranches {
+#if os(macOS)
                             let (errorCode, stdio, stderr) = await Processes.runProcessAsync(app: gitPath, with: ["branch", "--show-current"], in: file)
+#else
+                            // Async code uses clicore functionality not yet available on Linux
+                            let (errorCode, stdio) = Processes.runProcess(app: gitPath, with: ["branch", "--show-current"], in: file)
+#endif
                             if errorCode != 0 {
+#if os(macOS)
                                 Stdio.reportError(stderr)
+#else
+                                Stdio.reportError(stdio)
+#endif
                             } else {
                                 repo.currentBranch = String(stdio.dropLast(1))
                             }
                         } else {
                             while true {
+#if os(macOS)
                                 let (errorCode, stdio, stderr) = await Processes.runProcessAsync(app: gitPath, with: gitArgs[argIndex], in: file)
+#else
+                                // Async code uses clicore functionality not yet available on Linux
+                                let (errorCode, stdio) = Processes.runProcess(app: gitPath, with: gitArgs[argIndex], in: file)
+#endif
                                 if errorCode != 0 {
+#if os(macOS)
                                     Stdio.reportError(stderr)
+#else
+                                    Stdio.reportError(stdio)
+#endif
                                     break
                                 }
 

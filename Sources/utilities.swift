@@ -82,8 +82,14 @@ extension Gitcheck {
      */
     internal static func getGit() async -> String? {
 
+#if os(macOS)
         let (errorCode, stdio, stderr) = await Processes.runProcessAsync(app: "/usr/bin/which", with: ["git"])
         return errorCode == 0 ? String(stdio.dropLast(1)) : stderr
+#else
+        // Async code uses clicore functionality not yet available on Linux
+        let (errorCode, stdio) = Processes.runProcess(app: "/usr/bin/which", with: ["git"])
+        return errorCode == 0 ? String(stdio.dropLast(1)) : stdio
+#endif
     }
 
 
