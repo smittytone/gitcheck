@@ -76,11 +76,6 @@ extension Gitcheck {
                 Stdio.report(String(format: "%0d. %@", index + 1, bookmark))
 #endif
             }
-#if os(macOS)
-            Stdio.report(withEmoji: "📝", "Use the '--clean' flag to remove dead bookmarks")
-#else
-            Stdio.report("Use the '--clean' flag to remove dead bookmarks")
-#endif
         }
     }
 
@@ -245,7 +240,7 @@ extension Gitcheck {
         let newBookmarks = makeNewList(pruned, deleteMarker)
 
         // ...and write out the new bookmark file
-        guard let userChoice = Stdin.getCharacter("Do you wish to clean the bookmarks folder?")  else { return false }
+        guard let userChoice = Stdin.getKey("Do you wish to clean the bookmarks folder?")  else { return false }
         if userChoice != "Y" { return false }
         let saved = await saveBookmarks(newBookmarks, [])
         if saved.count != newBookmarks.count {
@@ -293,7 +288,7 @@ extension Gitcheck {
         if newBookmarks.count < bookmarks.count {
             // There are bookmarks to delete, so message the user
             let deleted = bookmarks.count - newBookmarks.count
-            guard let userChoice = Stdin.getCharacter("Do you wish to delete \(deleted) bookmark\(deleted == 1 ? "" : "s")?")  else { return }
+            guard let userChoice = Stdin.getKey("Do you wish to delete \(deleted) bookmark\(deleted == 1 ? "" : "s")?")  else { return }
             if userChoice == "Y" {
                 let saved = await saveBookmarks(newBookmarks, [])
                 if saved.count == newBookmarks.count {
