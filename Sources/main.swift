@@ -91,17 +91,15 @@ struct Gitcheck {
                     previousArgument = argument
                 case "-c", "--clean":
                     settings.cleanBookmarks = true
-                    //_ = await cleanBookmarks()
-                    //closeCleanly()
                 case "-g", "--gitpath":
                     requiresValue = 1
                     previousArgument = argument
                 case "-h", "--help":
                     showHelp()
-                    closeCleanly()
+                    Stdio.exitApp()
                 case "-v", "--version":
                     showHeader()
-                    closeCleanly()
+                    Stdio.exitApp()
                 default:
                     if argument.prefix(1) == "-" {
                         Stdio.reportErrorAndExit("Unknown argument: \(argument)")
@@ -121,33 +119,46 @@ struct Gitcheck {
         }
 
         // Get any stored bookmarks
-        var bookmarks: [String] = await loadBookmarks()
+        var bookmarks: [String] = []
+        switch await loadBookmarks() {
+            case .failure(let error):
+                Stdio.reportError(error.localizedDescription)
+            case .success(let loaded):
+                bookmarks = loaded
+        }
+
         if settings.showBookmarks {
             showBookmarks(bookmarks)
-            closeCleanly()
+            Stdio.exitApp()
         }
 
         if settings.cleanBookmarks {
             _ = await cleanBookmarks(bookmarks)
-            closeCleanly()
+            Stdio.exitApp()
         }
-        
+
         if !settings.deletedBookmarks.isEmpty {
             // We have bookmarks to delete
             await deleteBookmarks(bookmarks, settings)
-            closeCleanly()
+            Stdio.exitApp()
         }
 
         if settings.addBookmarks && !settings.targetDirectories.isEmpty {
-            bookmarks = await saveBookmarks(bookmarks, settings.targetDirectories)
+            switch await saveBookmarks(bookmarks, settings.targetDirectories) {
+                case .failure(let error):
+                    Stdio.reportError(error.localizedDescription)
+                case .success(let saved):
+                    bookmarks = saved
+            }
         }
 
         // Check we have directories
-        if settings.targetDirectories.isEmpty  {
+        if settings.targetDirectories.isEmpty {
             if bookmarks.isEmpty {
                 Stdio.reportErrorAndExit("No valid target directories specified")
             }
 
+            // Use the bookmarks not the supplied values
             settings.targetDirectories = convertBookmarks(bookmarks)
         }
 
@@ -155,7 +166,7 @@ struct Gitcheck {
         Stdio.write(message: "Checking", to: Stdio.ShellRoutes.Error)
 
         // Perform the status check
-        let results = await getRepoStates(settings)
+        let results = await getAllRepoStates(settings)
 
         // Bring the cursor back to home
         Stdio.write(message: "\r", to: Stdio.ShellRoutes.Error)
@@ -164,16 +175,7 @@ struct Gitcheck {
         displayRepoStates(results, settings)
 
         // Close cleanly
-        closeCleanly()
+        Stdio.exitApp()
     }
 
-
-    /**
-     Close the utility correctly.
-     */
-    private static func closeCleanly() {
-
-        Stdio.disableCtrlHandler()
-        exit(EXIT_SUCCESS)
-    }
 }

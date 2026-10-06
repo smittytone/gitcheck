@@ -76,6 +76,24 @@ extension Gitcheck {
 
 
     /**
+     Get a git binary's path.
+
+     - Returns: The git path or `nil` on error.
+     */
+    internal static func getGitPath(_ settings: Settings) async -> String? {
+
+        if let gitPath = settings.gitBinaryPath {
+            // The user passed in a git path as a CLI argument
+            return gitPath
+        }
+
+        // Attempt to get the path to the local git install
+        guard let gitPath = await getGit() else { return nil }
+        return gitPath
+    }
+
+
+    /**
      Get a git installation's location.
 
      - Returns: The git path or `nil` on error.

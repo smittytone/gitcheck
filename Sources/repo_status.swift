@@ -39,8 +39,8 @@ extension Gitcheck {
         - settings: A gitcheck settings structure, including the targets
 
      -Returns: An StatusResults structure containing the results of the scan.
-     */
-    internal static func getRepoStates(_ settings: Settings) async -> StatusResults {
+
+    internal static func getAllRepoStates1(_ settings: Settings) async -> StatusResults {
 
         var results = StatusResults()
         let gitArgs: [[String]] = [
@@ -48,13 +48,7 @@ extension Gitcheck {
             ["status", "--porcelain", "--ignore-submodules"]
         ]
 
-        let gitPath: String
-        if let gp = settings.gitBinaryPath {
-            gitPath = gp
-        } else {
-            guard let gp = await getGit() else { return results }
-            gitPath = gp
-        }
+        guard let gitPath = await getGitPath(settings) else { return results }
 
         for directory in settings.targetDirectories {
             var max = 0
@@ -147,8 +141,141 @@ extension Gitcheck {
 
         return results
     }
-
+     */
     
+
+    /**
+     Scan the supplied list of directories, each of which should have already been
+     validated (that they *are* directories, and they hold git repo files), and determine
+     their git state.
+
+     - Parameters:
+        - settings: A gitcheck settings structure, including the targets
+
+     -Returns: An StatusResults structure containing the results of the scan.
+     */
+    internal static func getAllRepoStates(_ settings: Settings) async -> StatusResults {
+
+        var results = StatusResults()
+        guard let gitPath = await getGitPath(settings) else { return results }
+
+        for directory in settings.targetDirectories {
+            let repoRecords = await getRepoStates(forDirectory: directory, gitPath, settings)
+            if !repoRecords.isEmpty {
+                // Add a separator record to be used in the output phase
+                // (only after at least one repo has been added)
+                if results.repos.count > 0 {
+                    var repo = RepoRecord()
+                    repo.state = .separator
+                    results.repos.append(repo)
+                }
+
+                // Now add the repos themselves
+                results.repos.append(contentsOf: repoRecords)
+                results.noReposFound = false
+
+                // Determine the maximum name width
+                var maxWidth = 0
+                for repo in repoRecords {
+                    if maxWidth < repo.name.count {
+                        maxWidth = repo.name.count
+                    }
+                }
+
+                results.widths.append(maxWidth)
+            }
+        }
+
+        return results
+    }
+
+
+    /**
+     Scan a directory, each of which should have already been
+     validated (that they *are* directories, and they hold git repo files), and determine
+     their git state.
+
+     - Parameters:
+        - settings: A gitcheck settings structure, including the targets
+
+     -Returns: An StatusResults structure containing the results of the scan.
+     */
+
+    internal static func getRepoStates(forDirectory repoDirectory: URL, _ gitPath: String, _ settings: Settings) async -> [RepoRecord] {
+
+        let gitArgs: [[String]] = [
+            ["status", "--ignore-submodules"],
+            ["status", "--porcelain", "--ignore-submodules"]
+        ]
+
+        var repos: [RepoRecord] = []
+
+        // Get a parent directory's files and order the alphabetically
+        if let files = await getFiles(repoDirectory) {
+            // Iterate over the parent's files
+            for file in files {
+                // Add an activity marker
+                Task { @MainActor in
+                    Stdio.write(message: ".", to: Stdio.ShellRoutes.Error)
+                }
+
+                // Test the file
+                if checkRepo(file) {
+                    var repo = RepoRecord()
+                    repo.name = file.lastPathComponent
+                    repo.path = file.path
+
+                    var argIndex = 0
+                    if settings.showBranches {
+#if os(macOS)
+                        let (errorCode, stdio, _) = await Processes.runProcessAsync(app: gitPath, with: ["branch", "--show-current"], in: file)
+#else
+                        // Async code uses clicore functionality not yet available on Linux
+                        let (errorCode, stdio) = Processes.runProcess(app: gitPath, with: ["branch", "--show-current"], in: file)
+#endif
+                        if errorCode == 0 {
+                            repo.currentBranch = String(stdio.dropLast(1))
+                        }
+
+                        // Ignore error for now
+                    } else {
+                        while true {
+#if os(macOS)
+                            let (errorCode, stdio, _) = await Processes.runProcessAsync(app: gitPath, with: gitArgs[argIndex], in: file)
+#else
+                            // Async code uses clicore functionality not yet available on Linux
+                            let (errorCode, stdio) = Processes.runProcess(app: gitPath, with: gitArgs[argIndex], in: file)
+#endif
+                            if errorCode != 0 {
+                                break
+                            }
+
+                            let state = determineRepoState(stdio)
+                            if state == .unknown {
+                                argIndex += 1
+                                if argIndex == gitArgs.count {
+                                    break
+                                }
+
+                                continue
+                            } else {
+                                repo.state = state
+                                break
+                            }
+                        }
+                    }
+
+                    if settings.showAllRepos || settings.showBranches || repo.state != .clean {
+                        repos.append(repo)
+                    }
+                }
+            }
+        }
+
+        return repos
+    }
+
+
     /**
      Examine the response from various `git status` commands to determine
      the repo state.
@@ -172,7 +299,7 @@ extension Gitcheck {
     }
 
 
-    /**
+     /**
      Output the git repo status report.
 
      - Parameters:

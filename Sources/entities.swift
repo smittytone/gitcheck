@@ -29,7 +29,7 @@ import Clicore
 
 
 /*
- gitcheck-specific operational and preference values.
+    gitcheck-specific operational and preference values.
  */
 struct Settings {
 
@@ -46,7 +46,7 @@ struct Settings {
 
 
 /*
- The outcome of a repo check.
+    The outcome of a repo check.
  */
 struct StatusResults {
 
@@ -57,7 +57,7 @@ struct StatusResults {
 
 
 /*
- A repo state record.
+    A repo state record.
  */
 struct RepoRecord {
 
@@ -69,7 +69,7 @@ struct RepoRecord {
 
 
 /*
- Possible repo states.
+    Possible repo states.
  */
 enum RepoState: String {
 
@@ -98,4 +98,48 @@ enum RepoState: String {
                 return .magenta
         }
     }
+}
+
+
+/*
+    Structure to hold the outcome of a failed bookmark file handling operation.
+    Supports `error.localizedDescription`.
+
+    The `code` value will be an error code (BookmarkProcessErrorKind). Its raw value can
+    be used as an exit code.
+
+    The `text` property will be an error message. It is required only by certain errors.
+*/
+public struct BookmarkProcessError: Error, LocalizedError {
+
+    public var code: BookmarkProcessErrorKind   = .noError
+    public var text: String?                    = nil
+    public var errorDescription: String? {
+        switch self.code {
+            case .noError:
+                return nil
+            case .badCreateFile:
+                return "Could not create the bookmark store at ~/\(CONSTANTS.BOOKMARK_FILE_PATH)"
+            case .badWriteToFile:
+                return "Could not write the bookmark store at ~/\(CONSTANTS.BOOKMARK_FILE_PATH)"
+            case .badLoadFile:
+                return "Could not load the bookmark store at ~/\(CONSTANTS.BOOKMARK_FILE_PATH)"
+            case .badBookmarkJson:
+                return "Could not process the bookmark store at ~/\(CONSTANTS.BOOKMARK_FILE_PATH)"
+            }
+        }
+}
+
+
+/*
+    Bookmark file handling error codes.
+    NOTE We require raw values for these, for output as stderr codes.
+*/
+public enum BookmarkProcessErrorKind: Int, Error {
+
+    case noError                                = 0
+    case badCreateFile                          = 1
+    case badWriteToFile                         = 2
+    case badLoadFile                            = 3
+    case badBookmarkJson                        = 4
 }

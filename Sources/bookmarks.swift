@@ -33,26 +33,30 @@ extension Gitcheck {
     /**
      Load the bookmarks from the standard file, if it exists and any are present.
 
-     - Returns: An array of bookmarks (absolute paths to repo parent directories).
+     - Returns: An array of bookmarks (absolute paths to repo parent directories),
+                or an error. An empty array is a valid return value
      */
-    internal static func loadBookmarks() async -> [String] {
+    internal static func loadBookmarks() async -> Result<[String], BookmarkProcessError> {
 
         var bookmarks: [String] = []
-        let home = FileManager.default.homeDirectoryForCurrentUser
-        let storeFile = home.appending(path: CONSTANTS.BOOKMARK_FILE_PATH)
-        if FileManager.default.fileExists(atPath: storeFile.path) {
-            do {
-                let bookmarkData = try Data(contentsOf: storeFile)
-                let bookmarkStore = try JSONSerialization.jsonObject(with: bookmarkData, options: []) as! [String: [String]]
-                guard let bms = bookmarkStore["bookmarks"] else { return bookmarks }
-                bookmarks = bms
-            } catch {
-                // Load failed
-                Stdio.reportError("Could not load or process the bookmark store")
+        let bookmarkFile = FileManager.default.homeDirectoryForCurrentUser.appending(path: CONSTANTS.BOOKMARK_FILE_PATH)
+        if FileManager.default.fileExists(atPath: bookmarkFile.path) {
+            guard let bookmarkData = try? Data(contentsOf: bookmarkFile) else {
+                return .failure(BookmarkProcessError(code: .badLoadFile))
             }
+
+            guard let bookmarkJson = try? JSONSerialization.jsonObject(with: bookmarkData, options: []) as? [String: [String]] else {
+                return .failure(BookmarkProcessError(code: .badBookmarkJson))
+            }
+
+            guard let bms = bookmarkJson["bookmarks"] else {
+                return .failure(BookmarkProcessError(code: .badBookmarkJson))
+            }
+
+            bookmarks = bms
         }
 
-        return bookmarks
+        return .success(bookmarks)
     }
 
 
@@ -85,16 +89,18 @@ extension Gitcheck {
      array of additional bookmarks (provided as file URLs).
 
      - Parameters:
-        - baseBookmarks: An array of bookmarked paths, as produced by `loadBookmarks()`.
+        - baseBookmarks: An array of existing bookmarked paths, as produced by `loadBookmarks()`.
         - newBookmarks:  An array of directory URLs to be added to the bookmark store.
 
      - Returns: An full array of bookmarks (absolute paths to repo parent directories).
+                The receiver can check whether the 
      */
-    internal static func saveBookmarks(_ baseBookmarks: [String], _ newBookmarks: [URL]) async -> [String] {
+    internal static func saveBookmarks(_ baseBookmarks: [String], _ newBookmarks: [URL]) async -> Result<[String], BookmarkProcessError>  {
 
         var bookmarks = baseBookmarks
 
         if !newBookmarks.isEmpty {
+            // Validate and add the new bookmarks to the base list
             for newBookmark in newBookmarks {
                 var got = false
                 for bookmark in bookmarks {
@@ -115,37 +121,32 @@ extension Gitcheck {
             }
         }
 
-        if bookmarks.count >= baseBookmarks.count {
-            print("***")
-            let home = FileManager.default.homeDirectoryForCurrentUser
-            let storeFile = home.appending(path: CONSTANTS.BOOKMARK_FILE_PATH)
-            let dict: [String:[String]] = ["bookmarks": bookmarks]
-            if !FileManager.default.fileExists(atPath: storeFile.path) {
-                do {
-                    let storeDir = home.appending(path: CONSTANTS.BOOKMARK_FILE_DIRECTORY)
-                    try FileManager.default.createDirectory(at: storeDir, withIntermediateDirectories: true)
-                } catch {
-                    Stdio.reportWarning("Could not create the bookmark store at ~/\(CONSTANTS.BOOKMARK_FILE_DIRECTORY)")
-                }
-            } else {
-                do {
-                    _ = try FileManager.default.replaceItemAt(home.appending(path: CONSTANTS.BOOKMARK_BACK_PATH), withItemAt: storeFile)
-                } catch {
-                    Stdio.reportError("Could not back-up the bookmark store at ~/\(CONSTANTS.BOOKMARK_FILE_DIRECTORY)")
-                }
-            }
-
+        let home = FileManager.default.homeDirectoryForCurrentUser
+        let storeFile = home.appending(path: CONSTANTS.BOOKMARK_FILE_PATH)
+        let dict: [String:[String]] = ["bookmarks": bookmarks]
+        if !FileManager.default.fileExists(atPath: storeFile.path) {
             do {
-                let bookmarkData = try JSONSerialization.data(withJSONObject: dict)
-                try bookmarkData.write(to: storeFile)
+                let storeDir = home.appending(path: CONSTANTS.BOOKMARK_FILE_DIRECTORY)
+                try FileManager.default.createDirectory(at: storeDir, withIntermediateDirectories: true)
             } catch {
-                Stdio.reportError("Could not write the bookmark store")
+                return .failure(BookmarkProcessError(code: .badCreateFile))
             }
         } else {
-            Stdio.reportWarning("No new bookmarks able to be added")
+            do {
+                _ = try FileManager.default.replaceItemAt(home.appending(path: CONSTANTS.BOOKMARK_BACK_PATH), withItemAt: storeFile)
+            } catch {
+                Stdio.reportWarning("Could not back-up the bookmark store at ~/\(CONSTANTS.BOOKMARK_FILE_DIRECTORY)")
+            }
         }
 
-        return bookmarks
+        do {
+            let bookmarkData = try JSONSerialization.data(withJSONObject: dict)
+            try bookmarkData.write(to: storeFile)
+        } catch {
+            return .failure(BookmarkProcessError(code: .badWriteToFile))
+        }
+
+        return .success(bookmarks)
     }
 
 
@@ -154,15 +155,16 @@ extension Gitcheck {
      contains one or more git repo directories. Bookmarks, in any, that fail these
      tests are pruned from the file.
 
-     TODO Get the user to confirm deletion.
-
      - Returns `true` if no changes needed to be made, or the deletion was successful,
                otherwise `false` (error, user rejected choice)
      */
     internal static func cleanBookmarks(_ bookmarks: [String]) async -> Bool {
 
         // Load in the current bookmarks
-        guard !bookmarks.isEmpty else { return true }
+        guard !bookmarks.isEmpty else {
+            Stdio.reportWarning("No bookmarks to clean")
+            return true
+        }
 
         // Check each bookmark
         var deadBookmarkIndices: [Int] = []
@@ -242,17 +244,35 @@ extension Gitcheck {
         // ...and write out the new bookmark file
         guard let userChoice = Stdin.getKey("Do you wish to clean the bookmarks folder?")  else { return false }
         if userChoice != "Y" { return false }
-        let saved = await saveBookmarks(newBookmarks, [])
-        if saved.count != newBookmarks.count {
-            Stdio.reportError("Could not clean bookmarks")
-            return false
+
+        let errorMessage: String
+        switch await saveBookmarks(newBookmarks, []) {
+            case .failure(let error):
+                errorMessage = error.localizedDescription
+            case .success(let saved):
+                if saved.count == newBookmarks.count {
+                    Stdio.report("Bookmarks cleaned")
+                    return true
+                }
+
+                errorMessage = "Could not clean bookmarks"
         }
 
-        Stdio.report("Bookmarks cleaned")
-        return true
+        Stdio.reportError(errorMessage)
+        return false
     }
 
 
+    /**
+     Delete one or more bookmarks, provided they are present.
+
+     NOTE This doesn't return the pruned list of bookmarks because the caller
+          exits the app on return. This may change.
+
+     - Parameters:
+        - bookmarks: The current bookmark array.
+        - settinsg:  The app settings, containing a list of bookmarks to delete.
+     */
     internal static func deleteBookmarks(_ bookmarks: [String], _ settings: Settings) async {
 
         // Iterate over list of to-be-deleted items (which might be list indices or paths)
@@ -289,18 +309,35 @@ extension Gitcheck {
             // There are bookmarks to delete, so message the user
             let deleted = bookmarks.count - newBookmarks.count
             guard let userChoice = Stdin.getKey("Do you wish to delete \(deleted) bookmark\(deleted == 1 ? "" : "s")?")  else { return }
-            if userChoice == "Y" {
-                let saved = await saveBookmarks(newBookmarks, [])
-                if saved.count == newBookmarks.count {
-                    Stdio.report("\(deleted) bookmark\(deleted == 1 ? "" : "s") deleted")
-                } else {
-                    Stdio.reportError("Could not delete \(deleted) bookmark\(deleted == 1 ? "" : "s")")
-                }
+            if userChoice != "Y" { return }
+
+            let errorMessage: String
+            switch await saveBookmarks(newBookmarks, []) {
+                case .failure(let error):
+                    errorMessage = error.localizedDescription
+                case .success(let saved):
+                    if saved.count == newBookmarks.count {
+                        Stdio.report("\(deleted) bookmark\(deleted == 1 ? "" : "s") deleted")
+                        return
+                    }
+
+                    errorMessage = "Could not delete \(deleted) bookmark\(deleted == 1 ? "" : "s")"
             }
+
+            Stdio.reportError(errorMessage)
         }
     }
 
 
+    /**
+     Removes elements from an array if a given element matches a specific value.
+
+     - Parameters:
+        - old:        The original array.
+        - deleteable: The value to match for deletions.
+
+     - Returns: A new array comprising the original minus any deleted values.
+     */
     internal static func makeNewList(_ old: [String], _ deleteable: String) -> [String] {
 
         return old.filter { $0 != deleteable }
