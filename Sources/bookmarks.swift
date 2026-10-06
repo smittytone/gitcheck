@@ -283,12 +283,13 @@ extension Gitcheck {
                 if var numericFirst = Int(String(first)) {
                     // Index number given -- check it's in range
                     numericFirst -= 1
-                    if numericFirst < 1 || numericFirst >= bookmarks.count {
+                    if numericFirst < 0 || numericFirst >= bookmarks.count {
                         continue
                     }
 
                     deletables.append(numericFirst)
                 } else if String(first) == "/" {
+                    // TODO This ignores relative paths
                     // Path given -- check it's in the bookmarks list
                     for (index, bookmark) in bookmarks.enumerated() {
                         if bookmark == deletable {
