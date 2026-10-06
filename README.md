@@ -114,6 +114,11 @@ Stored bookmarks:
 📁 1. /Users/smitty/Git
 📁 2. /Users/smitty/WorkRepos
 ```
+
+Pass the `--clean` (`-c`) flag to remove bookmarks to directories that no longer exist or are no longer parents to git repos.
+
+Pass the `--delete` (`-d`) flag to provide a list of specific bookmarks to delete. You can pass in a bookmark’s index from `gitcheck`’s bookmark listing (as shown above) or the absolute path of the directory the bookmark represents.
+
 ### Git
 
 By default, `gitcheck` looks for a `git` binary to call. If you have multiple `git` installations—as I do: one from Xcode Command Line Tools, the other, more up to date, installed via Homebrew—then `gitcheck` may not necessarily use the one you expect. To specify a specific `git` binary, pass in its absolute path using the `--gitpath` (`-g`) option:
