@@ -104,7 +104,7 @@ extension Gitcheck {
             for newBookmark in newBookmarks {
                 var got = false
                 for bookmark in bookmarks {
-                    if newBookmark.path == bookmark || String(newBookmark.path.dropLast(1)) == bookmark {
+                    if newBookmark.path == bookmark || String(newBookmark.path.trimmingCharacters(in: .whitespacesAndNewlines)) == bookmark {
                         Stdio.reportWarning("Directory \(newBookmark.path) already bookmarked")
                         got = true
                         break
