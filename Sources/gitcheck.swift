@@ -166,7 +166,7 @@ struct Gitcheck {
         Stdio.write(message: "Checking", to: Stdio.ShellRoutes.Error)
 
         // Perform the status check
-        let results = await getAllRepoStates(settings)
+        let results = await processParentDirectories(settings)
 
         // Bring the cursor back to home
         Stdio.write(message: "\r", to: Stdio.ShellRoutes.Error)

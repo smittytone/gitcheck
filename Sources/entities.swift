@@ -46,13 +46,37 @@ struct Settings {
 
 
 /*
-    The outcome of a repo check.
+    The outcome of a complete status check.
  */
 struct StatusResults {
 
-    internal var widths: [Int]              = []                // Array of repo name character widths (monospaced for CLI)
-    internal var repos: [RepoRecord]        = []                // Array of checked repos (see below)
+    internal var directories: [DirectoryResult] = []             // Checked directories containing reportable repos
     internal var noReposFound: Bool         = true              // Set if no repos were found at all
+}
+
+
+/*
+    The outcome of a parent directory check.
+
+    FROM 4.1.0
+ */
+struct DirectoryResult {
+
+    internal let directory: URL                                 // The checked parent directory
+    internal let width: Int                                     // Maximum repo name width (monospaced for CLI)
+    internal let repoResult: RepoResult                         // Reportable repos found in the directory
+}
+
+
+/*
+    Repo-specific outcomes of a parent directory check.
+
+    FROM 4.1.0
+ */
+struct RepoResult {
+
+    internal var repos: [RepoRecord]        = []
+    internal var clean                   = false
 }
 
 
@@ -76,8 +100,10 @@ enum RepoState: String {
     case clean                              = "no"
     case unmerged                           = "unmerged"
     case uncommitted                        = "uncommitted"
-    case unknown                            = "NaN"             // Got to put something!
-    case separator                          = "="
+    case unknown                            = "unknown"
+    // FROM 4.1.0
+    case unpulled                           = "not yet pulled"
+
 
 
     /**
@@ -94,10 +120,25 @@ enum RepoState: String {
                 return .yellow
             case .uncommitted:
                 return .red
+            case .unpulled:
+                return .cyan
             default:
                 return .magenta
         }
     }
+}
+
+
+/*
+    The parts of a `git status --porcelain=v2 --branch` response that determine repo state.
+
+    FROM 4.1.0
+ */
+struct GitStatus {
+
+    var ahead: Int?                         = nil               // Commits not pushed; nil if the branch has no upstream
+    var behind: Int                         = 0                 // Commits not pulled (as of the last fetch)
+    var hasWorkingChanges: Bool             = false             // Staged, unstaged, untracked or conflicted files
 }
 
 

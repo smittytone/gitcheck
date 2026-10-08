@@ -30,159 +30,44 @@ import Clicore
 
 extension Gitcheck {
 
+
     /**
-     Scan the supplied list of directories, each of which should have already been
-     validated (that they *are* directories, and they hold git repo files), and determine
-     their git state.
+     Scan the supplied list of directories (via `settings`, each of which should have already been
+     validated (that they *are* directories, and they hold git repo files), and iterate over the
+     list to determine each one's `git` state.
 
      - Parameters:
         - settings: A gitcheck settings structure, including the targets
 
-     -Returns: An StatusResults structure containing the results of the scan.
-
-    internal static func getAllRepoStates1(_ settings: Settings) async -> StatusResults {
+     - Returns: A StatusResults structure containing the collated results of the scan.
+     */
+    internal static func processParentDirectories(_ settings: Settings) async -> StatusResults {
 
         var results = StatusResults()
-        let gitArgs: [[String]] = [
-            ["status", "--ignore-submodules"],
-            ["status", "--porcelain", "--ignore-submodules"]
-        ]
 
+        // Try to get the path to the `git` binary
         guard let gitPath = await getGitPath(settings) else { return results }
 
-        for directory in settings.targetDirectories {
-            var max = 0
-
-            // Add a separator record to be used in the output phase
-            if results.repos.count > 0 {
-                var repo = RepoRecord()
-                repo.state = .separator
-                results.repos.append(repo)
-            }
-
-            // Get a parent directory's files and order the alphabetically
-            if let files = await getFiles(directory) {
-                // Iterate over the parent's files
-                for file in files {
-                    // Add an activity marker
-                    Stdio.write(message: ".", to: Stdio.ShellRoutes.Error)
-
-                    // Test the file
-                    if checkRepo(file) {
-                        // The current file is a repo directory
-                        results.noReposFound = false
-
-                        var repo = RepoRecord()
-                        repo.name = file.lastPathComponent
-                        repo.path = file.path
-
-                        var argIndex = 0
-                        if settings.showBranches {
-#if os(macOS)
-                            let (errorCode, stdio, stderr) = await Processes.runProcessAsync(app: gitPath, with: ["branch", "--show-current"], in: file)
-#else
-                            // Async code uses clicore functionality not yet available on Linux
-                            let (errorCode, stdio) = Processes.runProcess(app: gitPath, with: ["branch", "--show-current"], in: file)
-#endif
-                            if errorCode != 0 {
-#if os(macOS)
-                                Stdio.reportError(stderr)
-#else
-                                Stdio.reportError(stdio)
-#endif
-                            } else {
-                                repo.currentBranch = String(stdio.dropLast(1))
-                            }
-                        } else {
-                            while true {
-#if os(macOS)
-                                let (errorCode, stdio, stderr) = await Processes.runProcessAsync(app: gitPath, with: gitArgs[argIndex], in: file)
-#else
-                                // Async code uses clicore functionality not yet available on Linux
-                                let (errorCode, stdio) = Processes.runProcess(app: gitPath, with: gitArgs[argIndex], in: file)
-#endif
-                                if errorCode != 0 {
-#if os(macOS)
-                                    Stdio.reportError(stderr)
-#else
-                                    Stdio.reportError(stdio)
-#endif
-                                    break
-                                }
-
-                                let state = determineRepoState(stdio)
-                                if state == .unknown {
-                                    argIndex += 1
-                                    if argIndex == gitArgs.count {
-                                        break
-                                    }
-
-                                    continue
-                                } else {
-                                    repo.state = state
-                                    break
-                                }
-                            }
-                        }
-
-                        if max < repo.name.count {
-                            max = repo.name.count
-                        }
-
-                        if settings.showAllRepos || settings.showBranches || repo.state != .clean {
-                            results.repos.append(repo)
-                        }
-                    }
-                }
-            }
-
-            results.widths.append(max)
-        }
-
-        return results
-    }
-     */
-    
-
-    /**
-     Scan the supplied list of directories, each of which should have already been
-     validated (that they *are* directories, and they hold git repo files), and determine
-     their git state.
-
-     - Parameters:
-        - settings: A gitcheck settings structure, including the targets
-
-     -Returns: An StatusResults structure containing the results of the scan.
-     */
-    internal static func getAllRepoStates(_ settings: Settings) async -> StatusResults {
-
-        var results = StatusResults()
-        guard let gitPath = await getGitPath(settings) else { return results }
-
-        for directory in settings.targetDirectories {
-            let repoRecords = await getRepoStates(forDirectory: directory, gitPath, settings)
-            if !repoRecords.isEmpty {
-                // Add a separator record to be used in the output phase
-                // (only after at least one repo has been added)
-                if results.repos.count > 0 {
-                    var repo = RepoRecord()
-                    repo.state = .separator
-                    results.repos.append(repo)
-                }
-
-                // Now add the repos themselves
-                results.repos.append(contentsOf: repoRecords)
-                results.noReposFound = false
-
+        // Process the supplied list of parent directories
+        for parentDirectory in settings.targetDirectories {
+            let repoResult = await processParentDirectory(forDirectory: parentDirectory, gitPath, settings)
+            if !repoResult.repos.isEmpty {
                 // Determine the maximum name width
-                var maxWidth = 0
-                for repo in repoRecords {
-                    if maxWidth < repo.name.count {
-                        maxWidth = repo.name.count
-                    }
-                }
+                let maxWidth = repoResult.repos.map(\.name.count).max() ?? 0
 
-                results.widths.append(maxWidth)
+                // Create a result record for the parent and store it
+                let parentResult = DirectoryResult(directory: parentDirectory,
+                                                      width: maxWidth,
+                                                      repoResult: repoResult)
+                results.directories.append(parentResult)
+
+                // We found at least one repo, so clear the flag
+                results.noReposFound = false
+            } else {
+                if repoResult.clean {
+                    // All the repos in the parent were clean
+                    results.noReposFound = false
+                }
             }
         }
 
@@ -191,115 +76,173 @@ extension Gitcheck {
 
 
     /**
-     Scan a directory, each of which should have already been
-     validated (that they *are* directories, and they hold git repo files), and determine
-     their git state.
+     Scan a single parent directory and determine the `git` state of its subidiary
+     repo directories
 
      - Parameters:
-        - settings: A gitcheck settings structure, including the targets
+        - parentDirectory: The path of repo directory to scan.
+        - gitPath:         The path of the installed `git` binary.
+        - settings:        A gitcheck settings structure, including the targets.
 
-     -Returns: An StatusResults structure containing the results of the scan.
+      - Returns: A RepoResult structure containing the results of the scan.
      */
+    internal static func processParentDirectory(forDirectory parentDirectory: URL, _ gitPath: String, _ settings: Settings) async -> RepoResult {
 
-    internal static func getRepoStates(forDirectory repoDirectory: URL, _ gitPath: String, _ settings: Settings) async -> [RepoRecord] {
+        var repoResult = RepoResult()
 
-        let gitArgs: [[String]] = [
-            ["status", "--ignore-submodules"],
-            ["status", "--porcelain", "--ignore-submodules"]
-        ]
-
-        var repos: [RepoRecord] = []
-
-        // Get a parent directory's files and order the alphabetically
-        if let files = await getFiles(repoDirectory) {
+        // Get a parent directory's files and order them alphabetically
+        if let childDirectories = await getFiles(parentDirectory) {
             // Iterate over the parent's files
-            for file in files {
+            for directory in childDirectories {
                 // Add an activity marker
-                Task { @MainActor in
-                    Stdio.write(message: ".", to: Stdio.ShellRoutes.Error)
-                }
+                Stdio.write(message: ".", to: Stdio.ShellRoutes.Error)
 
                 // Test the file
-                if checkRepo(file) {
+                if checkRepo(directory) {
+                    // The directory does contain a git repo
                     var repo = RepoRecord()
-                    repo.name = file.lastPathComponent
-                    repo.path = file.path
 
-                    var argIndex = 0
+                    // Get state according to our search parameters
                     if settings.showBranches {
-#if os(macOS)
-                        let (errorCode, stdio, _) = await Processes.runProcessAsync(app: gitPath, with: ["branch", "--show-current"], in: file)
-#else
-                        // Async code uses clicore functionality not yet available on Linux
-                        let (errorCode, stdio) = Processes.runProcess(app: gitPath, with: ["branch", "--show-current"], in: file)
-#endif
-                        if errorCode == 0 {
-                            repo.currentBranch = String(stdio.dropLast(1))
-                        }
-
-                        // Ignore error for now
+                        repo.currentBranch = await getCurrentBranch(gitPath, in: directory)
                     } else {
-                        while true {
-#if os(macOS)
-                            let (errorCode, stdio, _) = await Processes.runProcessAsync(app: gitPath, with: gitArgs[argIndex], in: file)
-#else
-                            // Async code uses clicore functionality not yet available on Linux
-                            let (errorCode, stdio) = Processes.runProcess(app: gitPath, with: gitArgs[argIndex], in: file)
-#endif
-                            if errorCode != 0 {
-                                break
-                            }
-
-                            let state = determineRepoState(stdio)
-                            if state == .unknown {
-                                argIndex += 1
-                                if argIndex == gitArgs.count {
-                                    break
-                                }
-
-                                continue
-                            } else {
-                                repo.state = state
-                                break
-                            }
-                        }
+                        repo.state = await getCurrentState(gitPath, in: directory)
                     }
 
+                    // Keep the record if we need to
                     if settings.showAllRepos || settings.showBranches || repo.state != .clean {
-                        repos.append(repo)
+                        repo.name = directory.lastPathComponent
+                        repo.path = directory.path
+                        repoResult.repos.append(repo)
+                    }
+
+                    if repo.state == .clean {
+                        repoResult.clean = true
                     }
                 }
             }
         }
 
-        return repos
+        return repoResult
     }
 
 
     /**
-     Examine the response from various `git status` commands to determine
-     the repo state.
+     Get a repo's current branch, or a description of where HEAD points if it is detached.
+
+     - Parameters:
+        - gitPath: The path to the git binary.
+        - repo:    The repo directory.
+
+     - Returns: The branch name, `(detached at <hash>)`, or `(unknown)` on error.
+     */
+    private static func getCurrentBranch(_ gitPath: String, in repo: URL) async -> String {
+
+        let (errorCode, branch) = await runGit(gitPath, ["branch", "--show-current"], in: repo)
+        guard errorCode == 0 else { return "(unknown)" }
+        if !branch.isEmpty { return branch }
+
+        // No branch name means HEAD is detached, so report the commit instead
+        let (hashCode, hash) = await runGit(gitPath, ["rev-parse", "--short", "HEAD"], in: repo)
+        return hashCode == 0 && !hash.isEmpty ? "(detached at \(hash))" : "(detached)"
+    }
+
+
+    /**
+     Get a repo's current status.
+
+     - Parameters:
+        - gitPath: The path to the git binary.
+        - repo:    The repo directory.
+
+     - Returns: The state.
+     */
+    private static func getCurrentState(_ gitPath: String, in repo: URL) async -> RepoState {
+
+        let statusArgs = ["status", "--porcelain=v2", "--branch", "--ahead-behind", "--untracked-files=normal", "--ignore-submodules"]
+        let (errorCode, state) = await runGit(gitPath, statusArgs, in: repo)
+        guard errorCode == 0 else { return .unknown }
+
+        // Parse CLI output to get state
+        var status = parseRepoStatus(state)
+        if status.ahead == nil {
+            status.ahead = await countUnpushedCommits(gitPath, in: repo)
+        }
+
+        return determineRepoState(status)
+    }
+
+
+    /**
+     Examine the response from various `git status` commands to determine the repo state.
+
+     Requires use of `Porcelain=v2` in call to `git`.
 
      - Parameters:
         - text: The text returned by the call to `git`.
 
      - Returns: A RepoState enumeration value.
      */
-    internal static func determineRepoState(_ text: String) -> RepoState {
+    private static func determineRepoState(_ status: GitStatus) -> RepoState {
 
-        if text.contains("is ahead of") {
-            return .unmerged
-        } else if text.contains("nothing to commit, working tree clean") {
-            return .clean
-        } else if !text.isEmpty {
+        if status.hasWorkingChanges {
             return .uncommitted
         }
 
-        return .unknown
+        if let ahead = status.ahead, ahead > 0 {
+            return .unmerged
+        }
+
+        return status.behind > 0 ? .unpulled : .clean
     }
 
 
-     /**
+    private static func parseRepoStatus(_ text: String) -> GitStatus {
+
+            var status = GitStatus()
+
+            for line in text.split(separator: "\n") {
+                if line.hasPrefix("# branch.ab ") {
+                    // Format: `# branch.ab +<ahead> -<behind>`
+                    let fields = line.split(separator: " ")
+                    if fields.count >= 4 {
+                        status.ahead = Int(fields[2].dropFirst())
+                        status.behind = Int(fields[3].dropFirst()) ?? 0
+                    }
+                } else if !line.hasPrefix("# ") {
+                    // Every non-header porcelain-v2 record describes a change
+                    status.hasWorkingChanges = true
+                }
+            }
+
+            return status
+        }
+
+
+    /**
+     Count the commits reachable from HEAD that are not on any remote-tracking branch.
+     Used when a branch has no upstream, so `git status` can't report how far ahead it is.
+
+     FROM 4.1.0
+
+     - Parameters:
+        - gitPath: The path to the git binary.
+        - repo:    The repo directory.
+
+     - Returns: The number of unpushed commits, or 0 if the repo has no remotes or on error.
+     */
+    private static func countUnpushedCommits(_ gitPath: String, in repo: URL) async -> Int {
+
+        // A repo with no remotes has nowhere to push to, so treat it as up to date
+        let (remoteCode, remotes) = await runGit(gitPath, ["remote"], in: repo)
+        guard remoteCode == 0, !remotes.isEmpty else { return 0 }
+
+        let (countCode, count) = await runGit(gitPath, ["rev-list", "--count", "HEAD", "--not", "--remotes"], in: repo)
+        return countCode == 0 ? Int(count) ?? 0 : 0
+    }
+
+
+    /**
      Output the git repo status report.
 
      - Parameters:
@@ -308,47 +251,34 @@ extension Gitcheck {
     */
     internal static func displayRepoStates(_ results: StatusResults, _ settings: Settings) {
 
-        if results.repos.isEmpty {
+        if results.directories.isEmpty {
             if results.noReposFound {
                 Stdio.reportWarning("No repos found in the supplied directory or directories")
             } else {
                 Stdio.report("All checked local repos are up to date")
             }
         } else {
-            var index = 0
-            var width = results.widths[index]
             if settings.showBranches {
-                Stdio.report("Git directory \(String(.bold))\(settings.targetDirectories[index].path)\(String(.normal)) repo current branches:")
-                for repo in results.repos {
-                    if repo.state == .separator {
-                        index += 1
-                        width = results.widths[index]
-                        Stdio.report("\nGit directory \(String(.bold))\(settings.targetDirectories[index].path)\(String(.normal)) repo current branches:")
-                    } else {
-                        let spacer = String(String(repeating: " ", count: width - repo.name.count))
+                for (index, directoryResult) in results.directories.enumerated() {
+                    let prefix = index > 0 ? "\n" : ""
+                    Stdio.report("\(prefix)Git directory \(String(.bold))\(directoryResult.directory.path)\(String(.normal)) repo current branches:")
+                    for repo in directoryResult.repoResult.repos {
+                        let spacer = String(String(repeating: " ", count: directoryResult.width - repo.name.count))
                         Stdio.report("\(spacer)\(String(.bold))\(repo.name)\(String(.normal)) is on \(String(.bold))\(repo.currentBranch)\(String(.normal))")
                     }
                 }
             } else {
-                var parent = "\(String(.bold))\(settings.targetDirectories[index].path)\(String(.normal))"
-                if settings.showAllRepos {
-                    Stdio.report("Git directory \(parent) repos:")
-                } else {
-                    Stdio.report("Git directory \(parent) repos with changes:")
-                }
-
-                for repo in results.repos {
-                    if repo.state == .separator {
-                        index += 1
-                        width = results.widths[index]
-                        parent = "\(String(.bold))\(settings.targetDirectories[index].path)\(String(.normal))"
-                        if settings.showAllRepos {
-                            Stdio.report("\nGit directory \(parent) repos:")
-                        } else {
-                            Stdio.report("\nGit directory \(parent) repos with changes:")
-                        }
+                for (index, directoryResult) in results.directories.enumerated() {
+                    let prefix = index > 0 ? "\n" : ""
+                    let parent = "\(String(.bold))\(directoryResult.directory.path)\(String(.normal))"
+                    if settings.showAllRepos {
+                        Stdio.report("\(prefix)Git directory \(parent) repos:")
                     } else {
-                        let spacer = String(String(repeating: " ", count: width - repo.name.count))
+                        Stdio.report("\(prefix)Git directory \(parent) repos with changes:")
+                    }
+
+                    for repo in directoryResult.repoResult.repos {
+                        let spacer = String(String(repeating: " ", count: directoryResult.width - repo.name.count))
                         let changeColour = String(repo.state.colour())
                         Stdio.report("\(spacer)\(String(.bold))\(repo.name)\(String(.normal)) has \(changeColour)\(repo.state.rawValue)\(String(.normal)) changes")
                     }
