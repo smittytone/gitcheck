@@ -144,4 +144,3 @@ The source of truth for version information is `swift.plist`. This is embedded i
 
 `gitcheck` code is © 2026, Tony Smith (@smittytone). It is licensed under the terms of the [MIT Licence](LICENCE.md).
 
-_AI was not used in the development of this software. This is a statement of plain fact, not of policy. AI tools may be used in future._
