@@ -101,12 +101,12 @@ extension Gitcheck {
     internal static func getGit() async -> String? {
 
 #if os(macOS)
-        let (errorCode, stdio, stderr) = await Processes.runProcessAsync(app: "/usr/bin/which", with: ["git"])
-        return errorCode == 0 ? String(stdio.dropLast(1)) : stderr
+        let (errorCode, stdio, _) = await Processes.runProcessAsync(app: "/usr/bin/which", with: ["git"])
+        return errorCode == 0 ? String(stdio.trimmingCharacters(in: .whitespacesAndNewlines)) : nil
 #else
         // Async code uses clicore functionality not yet available on Linux
         let (errorCode, stdio) = Processes.runProcess(app: "/usr/bin/which", with: ["git"])
-        return errorCode == 0 ? String(stdio.dropLast(1)) : stdio
+        return errorCode == 0 ? String(stdio.trimmingCharacters(in: .whitespacesAndNewlines)) : nil
 #endif
     }
 
@@ -132,4 +132,27 @@ extension Gitcheck {
             return a.lastPathComponent.lowercased() < b.lastPathComponent.lowercased()
         })
     }
+
+
+    /**
+     Run git with the supplied arguments in the specified repo directory.
+
+     - Parameters:
+        - gitPath: The path to the git binary.
+        - args:    The arguments to pass to git.
+        - repo:    The repo directory to run git in.
+
+     - Returns: A tuple containing the exit code and git's output, trimmed of whitespace.
+     */
+    internal static func runGit(_ gitPath: String, _ args: [String], in repo: URL) async -> (Int32, String) {
+
+#if os(macOS)
+        let (errorCode, stdio, _) = await Processes.runProcessAsync(app: gitPath, with: args, in: repo)
+#else
+        // Async code uses clicore functionality not yet available on Linux
+        let (errorCode, stdio) = Processes.runProcess(app: gitPath, with: args, in: repo)
+#endif
+        return (errorCode, stdio.trimmingCharacters(in: .whitespacesAndNewlines))
+    }
+
 }
