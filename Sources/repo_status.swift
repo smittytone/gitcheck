@@ -91,41 +91,76 @@ extension Gitcheck {
         var repoResult = RepoResult()
 
         // Get a parent directory's files and order them alphabetically
-        if let childDirectories = await getFiles(parentDirectory) {
-            // Iterate over the parent's files
-            for directory in childDirectories {
-                // Add an activity marker
-                Stdio.write(message: ".", to: Stdio.ShellRoutes.Error)
+        guard let childDirectories = await getFiles(parentDirectory) else { return repoResult }
 
-                // Test the file
-                if checkRepo(directory) {
-                    // The directory does contain a git repo
-                    var repo = RepoRecord()
+        // Check child directories concurrently, but cap the number of simultaneous checks:
+        // each `git` process opens pipes, and an unbounded group could exhaust file descriptors
+        let maxConcurrentChecks = ProcessInfo.processInfo.activeProcessorCount
+        var checked: [(index: Int, repo: RepoRecord?)] = []
 
-                    // Get state according to our search parameters
-                    if settings.showBranches {
-                        repo.currentBranch = await getCurrentBranch(gitPath, in: directory)
-                    } else {
-                        repo.state = await getCurrentState(gitPath, in: directory)
-                    }
-
-                    // Keep the record if we need to
-                    if settings.showAllRepos || settings.showBranches || repo.state != .clean {
-                        repo.name = directory.lastPathComponent
-                        repo.path = directory.path
-                        repoResult.repos.append(repo)
-                    }
-
-                    if repo.state == .clean {
-                        repoResult.clean = true
-                    }
+        await withTaskGroup(of: (index: Int, repo: RepoRecord?).self) { group in
+            for (index, directory) in childDirectories.enumerated() {
+                // Once the cap is reached, wait for a check to finish before starting another
+                if index >= maxConcurrentChecks, let result = await group.next() {
+                    checked.append(result)
+                    Stdio.write(message: ".", to: Stdio.ShellRoutes.Error)
                 }
+
+                group.addTask {
+                    (index, await checkRepoDirectory(directory, gitPath, settings))
+                }
+            }
+
+            // Collect the remaining checks
+            for await result in group {
+                checked.append(result)
+                Stdio.write(message: ".", to: Stdio.ShellRoutes.Error)
+            }
+        }
+
+        // Tasks finish in any order, so restore the alphabetical order before filtering
+        for case let (_, repo?) in checked.sorted(by: { $0.index < $1.index }) {
+            // Keep the record if we need to
+            if settings.showAllRepos || settings.showBranches || repo.state != .clean {
+                repoResult.repos.append(repo)
+            }
+
+            if repo.state == .clean {
+                repoResult.clean = true
             }
         }
 
         return repoResult
     }
 
+
+    /**
+     Check a single child directory and, if it holds a `git` repo, determine its state or branch.
+
+     - Parameters:
+        - directory: The child directory to check.
+        - gitPath:   The path of the installed `git` binary.
+        - settings:  A gitcheck settings structure.
+
+     - Returns: A RepoRecord, or `nil` if the directory is not a git repo.
+     */
+    private static func checkRepoDirectory(_ directory: URL, _ gitPath: String, _ settings: Settings) async -> RepoRecord? {
+
+        guard checkRepo(directory) else { return nil }
+
+        var repo = RepoRecord()
+        repo.name = directory.lastPathComponent
+        repo.path = directory.path
+
+        // Get state according to our search parameters
+        if settings.showBranches {
+            repo.currentBranch = await getCurrentBranch(gitPath, in: directory)
+        } else {
+            repo.state = await getCurrentState(gitPath, in: directory)
+        }
+
+        return repo
+    }
 
     /**
      Get a repo's current branch, or a description of where HEAD points if it is detached.
