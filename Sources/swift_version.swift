@@ -27,5 +27,5 @@
          swift.plist, the source of truth for the app's version and build numbers.
 */
 
-let SWIFT_BUILD_PROCESS_VERSION = "4.1.0"
-let SWIFT_BUILD_PROCESS_BUILD = 20
+let SWIFT_BUILD_PROCESS_VERSION = "0.2.0"
+let SWIFT_BUILD_PROCESS_BUILD = 21
