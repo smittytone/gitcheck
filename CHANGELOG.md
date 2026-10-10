@@ -9,5 +9,6 @@
     - Fix issue with presentation of repos with unknown state.
     - Fix `git` call failure handling.
     - Significant code rewrites.
+    - Reset versioning.
 - 0.1.0 *6 October 2026*
     - Initial Swift version, with full boookmarking functionality.
