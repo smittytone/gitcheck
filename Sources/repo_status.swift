@@ -43,35 +43,46 @@ extension Gitcheck {
      */
     internal static func processParentDirectories(_ settings: Settings) async -> StatusResults {
 
-        var results = StatusResults()
-
         // Try to get the path to the `git` binary
-        guard let gitPath = await getGitPath(settings) else { return results }
+        guard let gitPath = await getGitPath(settings) else { return StatusResults() }
 
-        // Process the supplied list of parent directories
-        for parentDirectory in settings.targetDirectories {
-            let repoResult = await processParentDirectory(forDirectory: parentDirectory, gitPath, settings)
-            if !repoResult.repos.isEmpty {
-                // Determine the maximum name width
-                let maxWidth = repoResult.repos.map(\.name.count).max() ?? 0
+        // Spawn a sequence of threads, one per parent directory to process
+        // each directory in parallel
+        return await withTaskGroup(of: RepoResult.self) { group in
+            var statusResults = StatusResults()
 
-                // Create a result record for the parent and store it
-                let parentResult = DirectoryResult(directory: parentDirectory,
-                                                      width: maxWidth,
-                                                      repoResult: repoResult)
-                results.directories.append(parentResult)
-
-                // We found at least one repo, so clear the flag
-                results.noReposFound = false
-            } else {
-                if repoResult.clean {
-                    // All the repos in the parent were clean
-                    results.noReposFound = false
+            // Instantiate a Task for each parent directory
+            for parentDirectory in settings.targetDirectories {
+                group.addTask {
+                    let repoResult = await processParentDirectory(forDirectory: parentDirectory, gitPath, settings)
+                    return repoResult
                 }
             }
-        }
 
-        return results
+            for await repoResult in group {
+                if !repoResult.repos.isEmpty {
+                    // Determine the maximum name width
+                    let maxWidth = repoResult.repos.map(\.name.count).max() ?? 0
+
+                    // Create a result record for the parent and store it
+                    guard let parentDirectory = repoResult.parent else { continue }
+                    let parentResult = DirectoryResult(directory: parentDirectory,
+                                                       width: maxWidth,
+                                                       repoResult: repoResult)
+                    statusResults.directories.append(parentResult)
+
+                    // We found at least one repo, so clear the flag
+                    statusResults.noReposFound = false
+                } else {
+                    if repoResult.clean {
+                        // All the repos in the parent were clean
+                        statusResults.noReposFound = false
+                    }
+                }
+            }
+
+            return statusResults
+        }
     }
 
 
@@ -89,6 +100,7 @@ extension Gitcheck {
     internal static func processParentDirectory(forDirectory parentDirectory: URL, _ gitPath: String, _ settings: Settings) async -> RepoResult {
 
         var repoResult = RepoResult()
+        repoResult.parent = parentDirectory
 
         // Get a parent directory's files and order them alphabetically
         guard let childDirectories = await getFiles(parentDirectory) else { return repoResult }
@@ -107,18 +119,20 @@ extension Gitcheck {
                 }
 
                 group.addTask {
+                    // Return a tuple of the directory index and the check result
                     (index, await checkRepoDirectory(directory, gitPath, settings))
                 }
             }
 
-            // Collect the remaining checks
+            // Collect the remaining checks, i.e., those left after resolving those
+            // dealt with through the `await group.next()` call
             for await result in group {
                 checked.append(result)
                 Stdio.write(message: ".", to: Stdio.ShellRoutes.Error)
             }
         }
 
-        // Tasks finish in any order, so restore the alphabetical order before filtering
+        // Tasks finish in any order, so restore the original order before filtering
         for case let (_, repo?) in checked.sorted(by: { $0.index < $1.index }) {
             // Keep the record if we need to
             if settings.showAllRepos || settings.showBranches || repo.state != .clean {

@@ -76,7 +76,9 @@ struct DirectoryResult {
 struct RepoResult {
 
     internal var repos: [RepoRecord]        = []
-    internal var clean                   = false
+    internal var clean                      = false
+    // FROM 2.1.0
+    internal var parent: URL?               = nil
 }
 
 
