@@ -33,15 +33,15 @@ import Clicore
  */
 struct Settings {
 
-    public var targetDirectories: [URL]     = []                // A list of parent directories passed in at the CLI
-    public var deletedBookmarks: [String]   = []                // A list of bookmarks to be removed UNIMPLEMENTED
-    public var deleteFlag: Bool             = false
-    public var showBranches: Bool           = false             // The `--branch` flag was included
-    public var showAllRepos: Bool           = false             // The `--full` flag was included
-    public var showBookmarks: Bool          = false             // The `--list` flag was included
-    public var addBookmarks: Bool           = false             // The `--add` flag was included
-    public var cleanBookmarks: Bool         = false             // The `--clean` flag was included
-    public var gitBinaryPath: String?       = nil               // Optional path to a `git` installation
+    public var targetDirectories: [URL]             = []                // A list of parent directories passed in at the CLI
+    public var deletedBookmarks: [String]           = []                // A list of bookmarks to be removed UNIMPLEMENTED
+    public var deleteFlag: Bool                     = false
+    public var showBranches: Bool                   = false             // The `--branch` flag was included
+    public var showAllRepos: Bool                   = false             // The `--full` flag was included
+    public var showBookmarks: Bool                  = false             // The `--list` flag was included
+    public var addBookmarks: Bool                   = false             // The `--add` flag was included
+    public var cleanBookmarks: Bool                 = false             // The `--clean` flag was included
+    public var gitBinaryPath: String?               = nil               // Optional path to a `git` installation
 }
 
 
@@ -50,8 +50,8 @@ struct Settings {
  */
 struct StatusResults {
 
-    internal var directories: [DirectoryResult] = []             // Checked directories containing reportable repos
-    internal var noReposFound: Bool         = true              // Set if no repos were found at all
+    internal var directories: [DirectoryResult]     = []             // Checked directories containing reportable repos
+    internal var noReposFound: Bool                 = true              // Set if no repos were found at all
 }
 
 
@@ -69,28 +69,27 @@ struct DirectoryResult {
 
 
 /*
-    Repo-specific outcomes of a parent directory check.
+    A state report for a single parent directory of zero or more repos
 
     FROM 0.2.0
  */
 struct RepoResult {
 
-    internal var repos: [RepoRecord]        = []
-    internal var clean                      = false
-    // FROM 0.2.0
-    internal var parent: URL?               = nil
+    internal var repos: [RepoRecord]                = []                // Individual repo records in parent (may be empty)
+    internal var clean                              = false             // At least one repo is clean (important if `repos` is empty)s
+    internal var parent: URL?                       = nil
 }
 
 
 /*
-    A repo state record.
+    A state record for an individual repo.
  */
 struct RepoRecord {
 
-    var name: String                        = ""                // The repo name, i.e., the directory name
-    var path: String                        = ""                // The directory's path
-    var currentBranch: String               = ""                // The repo's working branch
-    var state: RepoState                    = .unknown          // The repo's state (see below)
+    var name: String                                = ""                // The repo name, i.e., the directory name
+    var path: String                                = ""                // The directory's path
+    var currentBranch: String                       = ""                // The repo's working branch
+    var state: RepoState                            = .unknown          // The repo's state (see below)
 }
 
 
@@ -99,12 +98,12 @@ struct RepoRecord {
  */
 enum RepoState: String {
 
-    case clean                              = "no"
-    case unmerged                           = "unmerged"
-    case uncommitted                        = "uncommitted"
-    case unknown                            = "unknown"
+    case clean                                      = "no"
+    case unmerged                                   = "unmerged"
+    case uncommitted                                = "uncommitted"
+    case unknown                                    = "unknown"
     // FROM 0.2.0
-    case unpulled                           = "not yet pulled"
+    case unpulled                                   = "not yet pulled"
 
 
 
@@ -138,9 +137,9 @@ enum RepoState: String {
  */
 struct GitStatus {
 
-    var ahead: Int?                         = nil               // Commits not pushed; nil if the branch has no upstream
-    var behind: Int                         = 0                 // Commits not pulled (as of the last fetch)
-    var hasWorkingChanges: Bool             = false             // Staged, unstaged, untracked or conflicted files
+    var ahead: Int?                                 = nil               // Commits not pushed; nil if the branch has no upstream
+    var behind: Int                                 = 0                 // Commits not pulled (as of the last fetch)
+    var hasWorkingChanges: Bool                     = false             // Staged, unstaged, untracked or conflicted files
 }
 
 
@@ -155,8 +154,8 @@ struct GitStatus {
 */
 public struct BookmarkProcessError: Error, LocalizedError {
 
-    public var code: BookmarkProcessErrorKind   = .noError
-    public var text: String?                    = nil
+    public var code: BookmarkProcessErrorKind       = .noError
+    public var text: String?                        = nil
     public var errorDescription: String? {
         switch self.code {
             case .noError:
@@ -180,9 +179,9 @@ public struct BookmarkProcessError: Error, LocalizedError {
 */
 public enum BookmarkProcessErrorKind: Int, Error {
 
-    case noError                                = 0
-    case badCreateFile                          = 1
-    case badWriteToFile                         = 2
-    case badLoadFile                            = 3
-    case badBookmarkJson                        = 4
+    case noError                                    = 0
+    case badCreateFile                              = 1
+    case badWriteToFile                             = 2
+    case badLoadFile                                = 3
+    case badBookmarkJson                            = 4
 }
