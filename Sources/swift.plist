@@ -3,13 +3,13 @@
 <plist version="1.0">
 <dict>
 	<key>CFBundleGetInfoString</key>
-	<string>gitcheck 4.0.0. Copyright © 2026, Tony Smith (@smittytone)</string>
+	<string>gitcheck 0.1.0. Copyright © 2026, Tony Smith (@smittytone)</string>
 	<key>CFBundleIdentifier</key>
 	<string>com.bps.gitcheck</string>
 	<key>CFBundleName</key>
 	<string>gitcheck</string>
 	<key>CFBundleShortVersionString</key>
-	<string>4.1.0</string>
+	<string>0.1.0</string>
 	<key>CFBundleVersion</key>
 	<string>20</string>
 	<key>LSMinimumSystemVersion</key>

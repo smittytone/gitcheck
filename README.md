@@ -1,4 +1,4 @@
-# Gitcheck 4.0.0
+# Gitcheck 0.1.0
 
 `gitcheck` lets you quickly view all your `git` repos that contain uncommitted or unmerged changes. It can also be used to list repos’ current branches.
 
@@ -132,15 +132,12 @@ gitcheck $HOME/Git --gitpath /opt/homebrew/bin/git
 1. Clone this repo.
 2. `cd` to the repo directory.
 3. Run `swift build -c release`
-4. `cp .build/release/gitcheck /usr/local/bin` (or to any other directory in your `$PATH`) 
+4. `cp .build/release/gitcheck /usr/local/bin` (or to any other directory in your `$PATH`)
 
 ## Versioning
-
-This release is 4.0.0. This is because versions 0.1.0 through 3.0.0 were shell scripts. Version 4.0.0 is the first written in Swift and includes a wider range of functionality.
 
 The source of truth for version information is `swift.plist`. This is embedded into the macOS binary for notarization purposes and to provide `gitcheck` with version data. The Linux build instead uses the contents of the file `swift_version.swift`. This file is updated via script to follow `swift.plist`.
 
 ## Ownership
 
 `gitcheck` code is © 2026, Tony Smith (@smittytone). It is licensed under the terms of the [MIT Licence](LICENCE.md).
-

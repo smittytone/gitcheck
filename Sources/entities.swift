@@ -58,7 +58,7 @@ struct StatusResults {
 /*
     The outcome of a parent directory check.
 
-    FROM 4.1.0
+    FROM 0.2.0
  */
 struct DirectoryResult {
 
@@ -71,7 +71,7 @@ struct DirectoryResult {
 /*
     Repo-specific outcomes of a parent directory check.
 
-    FROM 4.1.0
+    FROM 0.2.0
  */
 struct RepoResult {
 
@@ -101,7 +101,7 @@ enum RepoState: String {
     case unmerged                           = "unmerged"
     case uncommitted                        = "uncommitted"
     case unknown                            = "unknown"
-    // FROM 4.1.0
+    // FROM 0.2.0
     case unpulled                           = "not yet pulled"
 
 
@@ -132,7 +132,7 @@ enum RepoState: String {
 /*
     The parts of a `git status --porcelain=v2 --branch` response that determine repo state.
 
-    FROM 4.1.0
+    FROM 0.2.0
  */
 struct GitStatus {
 
