@@ -281,7 +281,7 @@ extension Gitcheck {
      Count the commits reachable from HEAD that are not on any remote-tracking branch.
      Used when a branch has no upstream, so `git status` can't report how far ahead it is.
 
-     FROM 4.1.0
+     FROM 0.2.0
 
      - Parameters:
         - gitPath: The path to the git binary.
