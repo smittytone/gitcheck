@@ -54,35 +54,44 @@ extension Gitcheck {
             // Instantiate a Task for each parent directory
             for parentDirectory in settings.targetDirectories {
                 group.addTask {
-                    let repoResult = await processParentDirectory(forDirectory: parentDirectory, gitPath, settings)
-                    return repoResult
+                    await processParentDirectory(forDirectory: parentDirectory, gitPath, settings)
                 }
             }
 
             for await repoResult in group {
-                if !repoResult.repos.isEmpty {
-                    // Determine the maximum name width
-                    let maxWidth = repoResult.repos.map(\.name.count).max() ?? 0
-
-                    // Create a result record for the parent and store it
-                    guard let parentDirectory = repoResult.parent else { continue }
-                    let parentResult = DirectoryResult(directory: parentDirectory,
-                                                       width: maxWidth,
-                                                       repoResult: repoResult)
-                    statusResults.directories.append(parentResult)
-
-                    // We found at least one repo, so clear the flag
-                    statusResults.noReposFound = false
-                } else {
-                    if repoResult.clean {
-                        // All the repos in the parent were clean
-                        statusResults.noReposFound = false
-                    }
-                }
+                statusResults = processResult(repoResult, statusResults)
             }
 
             return statusResults
         }
+    }
+
+
+    private static func processResult(_ result: RepoResult, _ currentResults: StatusResults) -> StatusResults {
+
+        var updatedResults = currentResults
+        if !result.repos.isEmpty {
+            guard let parentDirectory = result.parent else { return currentResults }
+
+            // Determine the maximum name width
+            let maxWidth = result.repos.map(\.name.count).max() ?? 0
+
+            // Create a result record for the parent and store it
+            let parentResult = DirectoryResult(directory: parentDirectory,
+                                               width: maxWidth,
+                                               repoResult: result)
+            updatedResults.directories.append(parentResult)
+
+            // We found at least one repo, so clear the flag
+            updatedResults.noReposFound = false
+        } else {
+            if result.clean {
+                // All the repos in the parent were clean
+                updatedResults.noReposFound = false
+            }
+        }
+
+        return updatedResults
     }
 
 
