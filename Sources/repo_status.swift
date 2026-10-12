@@ -51,7 +51,7 @@ extension Gitcheck {
         return await withTaskGroup(of: RepoResult.self) { group in
             var statusResults = StatusResults()
 
-            // Instantiate a Task for each parent directory
+            // Instantiate a parallel Task for each parent directory
             for parentDirectory in settings.targetDirectories {
                 group.addTask {
                     await processParentDirectory(forDirectory: parentDirectory, gitPath, settings)
@@ -70,9 +70,9 @@ extension Gitcheck {
     private static func processResult(_ result: RepoResult, _ currentResults: StatusResults) -> StatusResults {
 
         var updatedResults = currentResults
-        if !result.repos.isEmpty {
-            guard let parentDirectory = result.parent else { return currentResults }
+        guard let parentDirectory = result.parent else { return currentResults }
 
+        if !result.repos.isEmpty {
             // Determine the maximum name width
             let maxWidth = result.repos.map(\.name.count).max() ?? 0
 
@@ -88,6 +88,11 @@ extension Gitcheck {
             if result.clean {
                 // All the repos in the parent were clean
                 updatedResults.noReposFound = false
+
+                let parentResult = DirectoryResult(directory: parentDirectory,
+                                                   width: 0,
+                                                   repoResult: result)
+                updatedResults.directories.append(parentResult)
             }
         }
 
@@ -123,7 +128,8 @@ extension Gitcheck {
             for (index, directory) in childDirectories.enumerated() {
                 // Once the cap is reached, wait for a check to finish before starting another
                 if index >= maxConcurrentChecks, let result = await group.next() {
-                    checked.append(result)
+                    // `result.repo` is nil of the checked directory is not a repo
+                    if result.repo != nil { checked.append(result) }
                     Stdio.write(message: ".", to: Stdio.ShellRoutes.Error)
                 }
 
@@ -136,19 +142,23 @@ extension Gitcheck {
             // Collect the remaining checks, i.e., those left after resolving those
             // dealt with through the `await group.next()` call
             for await result in group {
-                checked.append(result)
+                // `result.repo` is nil of the checked directory is not a repo
+                if result.repo != nil { checked.append(result) }
                 Stdio.write(message: ".", to: Stdio.ShellRoutes.Error)
             }
         }
 
         // Tasks finish in any order, so restore the original order before filtering
         for case let (_, repo?) in checked.sorted(by: { $0.index < $1.index }) {
-            // Keep the record if we need to
+            // Keep the record if we need to: we're showing all of them/showing branches, or
+            // the repo contains changes
             if settings.showAllRepos || settings.showBranches || repo.state != .clean {
                 repoResult.repos.append(repo)
             }
 
             if repo.state == .clean {
+                // At least one repo is clean. This flag is only checked if the list
+                // of repos is empty: if it's `true` all repos must be clean
                 repoResult.clean = true
             }
         }
@@ -309,13 +319,17 @@ extension Gitcheck {
     */
     internal static func displayRepoStates(_ results: StatusResults, _ settings: Settings) {
 
+        Stdio.write(message: "\r\(String(repeating: " ", count: 128))\r", to: Stdio.ShellRoutes.Error)
         if results.directories.isEmpty {
+            // Every tested parent either contains no repos, or subsidiary repos are clean
             if results.noReposFound {
                 Stdio.reportWarning("No repos found in the supplied directory or directories")
             } else {
                 Stdio.report("All checked local repos are up to date")
             }
         } else {
+            // We have one or more repos that have uncommitted or unmerged changes.
+            // Some of their siblings may be clean
             if settings.showBranches {
                 for (index, directoryResult) in results.directories.enumerated() {
                     let prefix = index > 0 ? "\n" : ""
@@ -326,19 +340,27 @@ extension Gitcheck {
                     }
                 }
             } else {
+                // Iterate over the parents' results
                 for (index, directoryResult) in results.directories.enumerated() {
                     let prefix = index > 0 ? "\n" : ""
                     let parent = "\(String(.bold))\(directoryResult.directory.path)\(String(.normal))"
-                    if settings.showAllRepos {
+                    if settings.showAllRepos || directoryResult.repoResult.clean {
                         Stdio.report("\(prefix)Git directory \(parent) repos:")
                     } else {
                         Stdio.report("\(prefix)Git directory \(parent) repos with changes:")
                     }
-
-                    for repo in directoryResult.repoResult.repos {
-                        let spacer = String(String(repeating: " ", count: directoryResult.width - repo.name.count))
-                        let changeColour = String(repo.state.colour())
-                        Stdio.report("\(spacer)\(String(.bold))\(repo.name)\(String(.normal)) has \(changeColour)\(repo.state.rawValue)\(String(.normal)) changes")
+                    
+                    if directoryResult.repoResult.repos.isEmpty {
+                        if directoryResult.repoResult.clean {
+                            Stdio.report("All checked local repos are up to date")
+                        }
+                    } else {
+                        // Iterate over a parent's child repos
+                        for repo in directoryResult.repoResult.repos {
+                            let spacer = String(String(repeating: " ", count: directoryResult.width - repo.name.count))
+                            let changeColour = String(repo.state.colour())
+                            Stdio.report("\(spacer)\(String(.bold))\(repo.name)\(String(.normal)) has \(changeColour)\(repo.state.rawValue)\(String(.normal)) changes")
+                        }
                     }
                 }
             }
