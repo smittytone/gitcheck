@@ -12,4 +12,4 @@
     - Significant code rewrites.
     - Reset versioning.
 - 0.1.0 *6 October 2026*
-    - Initial Swift version, with full boookmarking functionality.
+    - Initial Swift version, with full bookmarking functionality.
