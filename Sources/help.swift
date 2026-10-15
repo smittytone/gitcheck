@@ -38,13 +38,8 @@ extension Gitcheck {
         let gitcheck = "\(String(.bold))gitcheck\(String(.normal))"
         let helpText = """
             
-            Call \(gitcheck) to view the status of git repos on your computer. Pass in one or more
-            parent directories to display the status of the repos they contain. If you include 
-            the --add flag, passed parent-directory paths will be bookmarked. Bookmarked directories 
-            are examined when you call \(gitcheck) and pass in no parent-directory paths.
-
             \(String(.bold))USAGE\(String(.normal))
-              gitcheck [-f] [-b] [-a] [-l] [-c] [-g /path/to/git] [-v] [-h] [/path/to/git/directory]
+              gitcheck [options] /path/to/parent/directory ... /path/to/parent/directory
 
             \(String(.bold))OPTIONS\(String(.normal))
               -f | --full               Provide status for all of the repos within parent directories.
@@ -61,6 +56,21 @@ extension Gitcheck {
               
               -v | --version            \(gitcheck) version information
               -h | --help               This help screen
+
+            Call \(gitcheck) to view the status of git repos on your computer. Pass in one or more
+            parent directories to display the status of the repos they contain. 
+            
+            For example, if all your GitHub repos are in ~/Work/Repos/GitHub, call:
+            
+              gitcheck ~/Work/Repos/GitHub
+            
+            If you have a separate directory for GitLab repos, add it too:
+            
+              gitcheck ~/Work/Repos/GitHub ~/Work/Repos/GitLab
+            
+            If you include the --add flag, passed parent-directory paths will be bookmarked. 
+            Bookmarked parent directories are examined when you call \(gitcheck) with no 
+            parent-directory paths as arguments.
 
             """
 
