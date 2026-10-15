@@ -4,7 +4,7 @@ import PackageDescription
 let package = Package(
     name: "gitcheck",
     platforms: [
-        .macOS(.v14) // Targets macOS 14 or later
+        .macOS(.v14)
     ],
     dependencies: [
         .package(url: "https://github.com/smittytone/clicore", branch: "develop"),

@@ -43,35 +43,60 @@ extension Gitcheck {
      */
     internal static func processParentDirectories(_ settings: Settings) async -> StatusResults {
 
-        var results = StatusResults()
-
         // Try to get the path to the `git` binary
-        guard let gitPath = await getGitPath(settings) else { return results }
+        guard let gitPath = await getGitPath(settings) else { return StatusResults() }
 
-        // Process the supplied list of parent directories
-        for parentDirectory in settings.targetDirectories {
-            let repoResult = await processParentDirectory(forDirectory: parentDirectory, gitPath, settings)
-            if !repoResult.repos.isEmpty {
-                // Determine the maximum name width
-                let maxWidth = repoResult.repos.map(\.name.count).max() ?? 0
+        // Spawn a sequence of threads, one per parent directory to process
+        // each directory in parallel
+        return await withTaskGroup(of: RepoResult.self) { group in
+            var statusResults = StatusResults()
 
-                // Create a result record for the parent and store it
-                let parentResult = DirectoryResult(directory: parentDirectory,
-                                                      width: maxWidth,
-                                                      repoResult: repoResult)
-                results.directories.append(parentResult)
-
-                // We found at least one repo, so clear the flag
-                results.noReposFound = false
-            } else {
-                if repoResult.clean {
-                    // All the repos in the parent were clean
-                    results.noReposFound = false
+            // Instantiate a parallel Task for each parent directory
+            for parentDirectory in settings.targetDirectories {
+                group.addTask {
+                    await processParentDirectory(forDirectory: parentDirectory, gitPath, settings)
                 }
+            }
+
+            for await repoResult in group {
+                statusResults = processResult(repoResult, statusResults)
+            }
+
+            return statusResults
+        }
+    }
+
+
+    private static func processResult(_ result: RepoResult, _ currentResults: StatusResults) -> StatusResults {
+
+        var updatedResults = currentResults
+        guard let parentDirectory = result.parent else { return currentResults }
+
+        if !result.repos.isEmpty {
+            // Determine the maximum name width
+            let maxWidth = result.repos.map(\.name.count).max() ?? 0
+
+            // Create a result record for the parent and store it
+            let parentResult = DirectoryResult(directory: parentDirectory,
+                                               width: maxWidth,
+                                               repoResult: result)
+            updatedResults.directories.append(parentResult)
+
+            // We found at least one repo, so clear the flag
+            updatedResults.noReposFound = false
+        } else {
+            if result.clean {
+                // All the repos in the parent were clean
+                updatedResults.noReposFound = false
+
+                let parentResult = DirectoryResult(directory: parentDirectory,
+                                                   width: 0,
+                                                   repoResult: result)
+                updatedResults.directories.append(parentResult)
             }
         }
 
-        return results
+        return updatedResults
     }
 
 
@@ -89,43 +114,86 @@ extension Gitcheck {
     internal static func processParentDirectory(forDirectory parentDirectory: URL, _ gitPath: String, _ settings: Settings) async -> RepoResult {
 
         var repoResult = RepoResult()
+        repoResult.parent = parentDirectory
 
         // Get a parent directory's files and order them alphabetically
-        if let childDirectories = await getFiles(parentDirectory) {
-            // Iterate over the parent's files
-            for directory in childDirectories {
-                // Add an activity marker
-                Stdio.write(message: ".", to: Stdio.ShellRoutes.Error)
+        guard let childDirectories = await getFiles(parentDirectory) else { return repoResult }
 
-                // Test the file
-                if checkRepo(directory) {
-                    // The directory does contain a git repo
-                    var repo = RepoRecord()
+        // Check child directories concurrently, but cap the number of simultaneous checks:
+        // each `git` process opens pipes, and an unbounded group could exhaust file descriptors
+        let maxConcurrentChecks = ProcessInfo.processInfo.activeProcessorCount
+        var checked: [(index: Int, repo: RepoRecord?)] = []
 
-                    // Get state according to our search parameters
-                    if settings.showBranches {
-                        repo.currentBranch = await getCurrentBranch(gitPath, in: directory)
-                    } else {
-                        repo.state = await getCurrentState(gitPath, in: directory)
-                    }
-
-                    // Keep the record if we need to
-                    if settings.showAllRepos || settings.showBranches || repo.state != .clean {
-                        repo.name = directory.lastPathComponent
-                        repo.path = directory.path
-                        repoResult.repos.append(repo)
-                    }
-
-                    if repo.state == .clean {
-                        repoResult.clean = true
-                    }
+        await withTaskGroup(of: (index: Int, repo: RepoRecord?).self) { group in
+            for (index, directory) in childDirectories.enumerated() {
+                // Once the cap is reached, wait for a check to finish before starting another
+                if index >= maxConcurrentChecks, let result = await group.next() {
+                    // `result.repo` is nil of the checked directory is not a repo
+                    if result.repo != nil { checked.append(result) }
+                    Stdio.write(message: ".", to: Stdio.ShellRoutes.Error)
                 }
+
+                group.addTask {
+                    // Return a tuple of the directory index and the check result
+                    (index, await checkRepoDirectory(directory, gitPath, settings))
+                }
+            }
+
+            // Collect the remaining checks, i.e., those left after resolving those
+            // dealt with through the `await group.next()` call
+            for await result in group {
+                // `result.repo` is nil of the checked directory is not a repo
+                if result.repo != nil { checked.append(result) }
+                Stdio.write(message: ".", to: Stdio.ShellRoutes.Error)
+            }
+        }
+
+        // Tasks finish in any order, so restore the original order before filtering
+        for case let (_, repo?) in checked.sorted(by: { $0.index < $1.index }) {
+            // Keep the record if we need to: we're showing all of them/showing branches, or
+            // the repo contains changes
+            if settings.showAllRepos || settings.showBranches || repo.state != .clean {
+                repoResult.repos.append(repo)
+            }
+
+            if repo.state == .clean {
+                // At least one repo is clean. This flag is only checked if the list
+                // of repos is empty: if it's `true` all repos must be clean
+                repoResult.clean = true
             }
         }
 
         return repoResult
     }
 
+
+    /**
+     Check a single child directory and, if it holds a `git` repo, determine its state or branch.
+
+     - Parameters:
+        - directory: The child directory to check.
+        - gitPath:   The path of the installed `git` binary.
+        - settings:  A gitcheck settings structure.
+
+     - Returns: A RepoRecord, or `nil` if the directory is not a git repo.
+     */
+    private static func checkRepoDirectory(_ directory: URL, _ gitPath: String, _ settings: Settings) async -> RepoRecord? {
+
+        guard checkRepo(directory) else { return nil }
+
+        var repo = RepoRecord()
+        repo.name = directory.lastPathComponent
+        repo.path = directory.path
+
+        // Get state according to our search parameters
+        if settings.showBranches {
+            repo.currentBranch = await getCurrentBranch(gitPath, in: directory)
+        } else {
+            repo.state = await getCurrentState(gitPath, in: directory)
+        }
+
+        return repo
+    }
 
     /**
      Get a repo's current branch, or a description of where HEAD points if it is detached.
@@ -251,13 +319,17 @@ extension Gitcheck {
     */
     internal static func displayRepoStates(_ results: StatusResults, _ settings: Settings) {
 
+        Stdio.write(message: "\r\(String(repeating: " ", count: 128))\r", to: Stdio.ShellRoutes.Error)
         if results.directories.isEmpty {
+            // Every tested parent either contains no repos, or subsidiary repos are clean
             if results.noReposFound {
                 Stdio.reportWarning("No repos found in the supplied directory or directories")
             } else {
                 Stdio.report("All checked local repos are up to date")
             }
         } else {
+            // We have one or more repos that have uncommitted or unmerged changes.
+            // Some of their siblings may be clean
             if settings.showBranches {
                 for (index, directoryResult) in results.directories.enumerated() {
                     let prefix = index > 0 ? "\n" : ""
@@ -268,19 +340,27 @@ extension Gitcheck {
                     }
                 }
             } else {
+                // Iterate over the parents' results
                 for (index, directoryResult) in results.directories.enumerated() {
                     let prefix = index > 0 ? "\n" : ""
                     let parent = "\(String(.bold))\(directoryResult.directory.path)\(String(.normal))"
-                    if settings.showAllRepos {
+                    if settings.showAllRepos || directoryResult.repoResult.clean {
                         Stdio.report("\(prefix)Git directory \(parent) repos:")
                     } else {
                         Stdio.report("\(prefix)Git directory \(parent) repos with changes:")
                     }
-
-                    for repo in directoryResult.repoResult.repos {
-                        let spacer = String(String(repeating: " ", count: directoryResult.width - repo.name.count))
-                        let changeColour = String(repo.state.colour())
-                        Stdio.report("\(spacer)\(String(.bold))\(repo.name)\(String(.normal)) has \(changeColour)\(repo.state.rawValue)\(String(.normal)) changes")
+                    
+                    if directoryResult.repoResult.repos.isEmpty {
+                        if directoryResult.repoResult.clean {
+                            Stdio.report("All checked local repos are up to date")
+                        }
+                    } else {
+                        // Iterate over a parent's child repos
+                        for repo in directoryResult.repoResult.repos {
+                            let spacer = String(String(repeating: " ", count: directoryResult.width - repo.name.count))
+                            let changeColour = String(repo.state.colour())
+                            Stdio.report("\(spacer)\(String(.bold))\(repo.name)\(String(.normal)) has \(changeColour)\(repo.state.rawValue)\(String(.normal)) changes")
+                        }
                     }
                 }
             }

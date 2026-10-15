@@ -1,4 +1,4 @@
-# Gitcheck 0.1.0
+# Gitcheck 0.2.0
 
 `gitcheck` lets you quickly view all your `git` repos that contain uncommitted or unmerged changes. It can also be used to list repos’ current branches.
 
@@ -141,3 +141,7 @@ The source of truth for version information is `swift.plist`. This is embedded i
 ## Ownership
 
 `gitcheck` code is © 2026, Tony Smith (@smittytone). It is licensed under the terms of the [MIT Licence](LICENCE.md).
+
+## AI Usage Policy
+
+The code in this repo was not written by AI but by the owner. However, AI has been used to assist in research, testing and code review. All code portions suggested by AI and subsequently included in this codebase have been reviewed and modified by the owner.

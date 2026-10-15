@@ -100,14 +100,8 @@ extension Gitcheck {
      */
     internal static func getGit() async -> String? {
 
-#if os(macOS)
         let (errorCode, stdio, _) = await Processes.runProcessAsync(app: "/usr/bin/which", with: ["git"])
         return errorCode == 0 ? String(stdio.trimmingCharacters(in: .whitespacesAndNewlines)) : nil
-#else
-        // Async code uses clicore functionality not yet available on Linux
-        let (errorCode, stdio) = Processes.runProcess(app: "/usr/bin/which", with: ["git"])
-        return errorCode == 0 ? String(stdio.trimmingCharacters(in: .whitespacesAndNewlines)) : nil
-#endif
     }
 
 
@@ -146,12 +140,9 @@ extension Gitcheck {
      */
     internal static func runGit(_ gitPath: String, _ args: [String], in repo: URL) async -> (Int32, String) {
 
-#if os(macOS)
-        let (errorCode, stdio, _) = await Processes.runProcessAsync(app: gitPath, with: args, in: repo)
-#else
-        // Async code uses clicore functionality not yet available on Linux
-        let (errorCode, stdio) = Processes.runProcess(app: gitPath, with: args, in: repo)
-#endif
+        // FROM 2.1.0 -- Use git's `-C` (which works on macOS and Linux) instead of `runProcessAsync()`'s interior
+        //               `task.currentDirectoryURL` as this has issues with older versions of the Linux toolchain
+        let (errorCode, stdio, _) = await Processes.runProcessAsync(app: gitPath, with: ["-C", repo.path] + args, in: repo)
         return (errorCode, stdio.trimmingCharacters(in: .whitespacesAndNewlines))
     }
 
