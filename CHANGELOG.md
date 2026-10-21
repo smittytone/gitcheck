@@ -1,6 +1,6 @@
 ## Release Notes ##
 
-- 0.2.0 *Unreleased*
+- 0.2.0 *21 October 2026*
     - Better handling of repo state and current branch determination.
     - Change display priority to favor uncommitted changes over unmerged ones.
     - Handle detached HEAD so branch names don’t appear empty.
